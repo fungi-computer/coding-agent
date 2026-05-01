@@ -8,6 +8,7 @@ import type { ClientTransport } from "./agent-session-client.js";
 
 export interface WebSocketClientTransportOptions {
 	url: string;
+	subprotocol?: string;
 	onDebug?: (message: string) => void;
 }
 
@@ -19,10 +20,12 @@ export class WebSocketClientTransport implements ClientTransport {
 	private connectRejecter: ((err: Error) => void) | null = null;
 	private closed = false;
 	private readonly url: string;
+	private readonly subprotocol?: string;
 	private readonly onDebug?: (message: string) => void;
 
 	constructor(options: WebSocketClientTransportOptions) {
 		this.url = options.url;
+		this.subprotocol = options.subprotocol;
 		this.onDebug = options.onDebug;
 	}
 
@@ -37,7 +40,9 @@ export class WebSocketClientTransport implements ClientTransport {
 			this.closed = false;
 
 			try {
-				this.ws = new WebSocket(this.url, "pi-agent-v1");
+				this.ws = this.subprotocol
+					? new WebSocket(this.url, this.subprotocol)
+					: new WebSocket(this.url);
 				this.ws.addEventListener("open", this.handleOpen);
 				this.ws.addEventListener("message", this.handleMessage);
 				this.ws.addEventListener("close", this.handleClose);

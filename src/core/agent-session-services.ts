@@ -1,6 +1,6 @@
 import { join } from "node:path";
 import type { ThinkingLevel } from "@shiit/agent-core";
-import type { Model } from "@mariozechner/pi-ai";
+import type { Model, SimpleStreamOptions } from "@mariozechner/pi-ai";
 import { getAgentDir } from "../config.js";
 import { AuthStorage } from "./auth-storage.js";
 import type { SessionStartEvent, ToolDefinition } from "./extensions/index.js";
@@ -53,6 +53,7 @@ export interface CreateAgentSessionFromServicesOptions {
 	thinkingLevel?: ThinkingLevel;
 	scopedModels?: Array<{ model: Model<any>; thinkingLevel?: ThinkingLevel }>;
 	tools?: ToolDefinition[];
+	onPayload?: SimpleStreamOptions["onPayload"];
 }
 
 /**
@@ -190,5 +191,6 @@ export async function createAgentSessionFromServices(
 		scopedModels: options.scopedModels,
 		tools: options.tools,
 		sessionStartEvent: options.sessionStartEvent,
+		onPayload: options.onPayload,
 	});
 }

@@ -1,6 +1,6 @@
 import { join } from "node:path";
 import { Agent, type AgentMessage, type ThinkingLevel } from "@shiit/agent-core";
-import { type Message, type Model, streamSimple } from "@mariozechner/pi-ai";
+import { type Message, type Model, type SimpleStreamOptions, streamSimple } from "@mariozechner/pi-ai";
 import { getAgentDir, getDocsPath } from "../config.js";
 import { AgentSession, type AgentLogger, ConsoleLogger } from "./agent-session.js";
 import { AuthStorage } from "./auth-storage.js";
@@ -48,6 +48,8 @@ export interface CreateAgentSessionOptions {
 	sessionStartEvent?: SessionStartEvent;
 	/** Logger for observability. Default: ConsoleLogger (logs to console in CF Workers). */
 	logger?: AgentLogger;
+	/** Optional callback for inspecting or replacing provider payloads before sending. */
+	onPayload?: SimpleStreamOptions["onPayload"];
 }
 
 /** Result from createAgentSession */
@@ -252,12 +254,16 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 				headers: auth.headers || options?.headers ? { ...auth.headers, ...options?.headers } : undefined,
 			});
 		},
-		onPayload: async (payload, _model) => {
+		onPayload: async (payload, model) => {
+			let result = payload;
+			if (options.onPayload) {
+				result = (await options.onPayload(result, model)) ?? result;
+			}
 			const runner = extensionRunnerRef.current;
 			if (!runner?.hasHandlers("before_provider_request")) {
-				return payload;
+				return result;
 			}
-			return runner.emitBeforeProviderRequest(payload);
+			return runner.emitBeforeProviderRequest(result);
 		},
 		sessionId: sessionManager.getSessionId(),
 		transformContext: async (messages) => {

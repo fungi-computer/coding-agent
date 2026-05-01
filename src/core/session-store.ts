@@ -32,6 +32,7 @@ export interface SessionStore {
 	getSession(sessionId: string): Promise<SessionData | null>;
 	deleteSession(sessionId: string): Promise<void>;
 	listSessions(): Promise<SessionListItem[]>;
+	renameSession(sessionId: string, name: string): Promise<void>;
 
 	appendEntry(sessionId: string, entry: SessionEntry): Promise<void>;
 	getEntries(sessionId: string): Promise<SessionEntry[]>;

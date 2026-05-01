@@ -76,6 +76,14 @@ export class InMemorySessionStore implements SessionStore {
 		}
 	}
 
+	async renameSession(sessionId: string, name: string): Promise<void> {
+		const session = this.sessions.get(sessionId);
+		if (session) {
+			session.name = name;
+			session.modifiedAt = Date.now();
+		}
+	}
+
 	clear(): void {
 		this.sessions.clear();
 	}

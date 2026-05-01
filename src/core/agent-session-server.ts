@@ -144,6 +144,11 @@ export class AgentSessionServer {
 		return this._sessionStore.listSessions();
 	}
 
+	async renameSession(sessionId: string, name: string): Promise<void> {
+		await this._sessionStore.renameSession(sessionId, name);
+		this._emitGlobal({ type: "session_renamed", sessionId, name });
+	}
+
 	async command(sessionId: string, cmd: SessionCommand): Promise<void> {
 		let state = this._sessions.get(sessionId);
 		if (!state) {

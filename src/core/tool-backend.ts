@@ -1,31 +1,36 @@
 /**
- * ToolBackend - Tool execution abstraction for AgentSessionServer.
+ * ToolMount - Tool execution abstraction for AgentSessionServer.
  *
- * Implementations provide the tools available to sessions (file tools, bash, etc.)
+ * A mount owns the tools available to sessions. The agent loop asks the mount
+ * what's available (listTools) and asks it to execute (execute). The mount
+ * decides what tools exist based on the environment.
  */
 
-import type { BashResult } from "./bash-executor.js";
+export interface ToolMount {
+	/** List available tools on this mount */
+	listTools(): ToolDefinition[];
 
-export interface BashOptions {
-	 cwd?: string;
-	 timeout?: number;
-	 excludeFromContext?: boolean;
+	/**
+	 * Execute a tool by name on this mount.
+	 *
+	 * @param name - Tool name
+	 * @param args - Tool arguments (validated against tool schema)
+	 * @param signal - Abort signal for cancellation
+	 * @param onUpdate - Callback for streaming partial results
+	 */
+	execute(
+		name: string,
+		args: unknown,
+		signal?: AbortSignal,
+		onUpdate?: ToolUpdateCallback,
+	): Promise<ToolResult>;
 }
+
+export type ToolUpdateCallback = (partialResult: ToolResult) => void;
 
 export interface ToolResult {
 	content: unknown;
 	isError?: boolean;
-}
-
-export interface ToolBackend {
-	readonly tools: ToolDefinition[];
-	executeTool(name: string, args: unknown): Promise<ToolResult>;
-	executeBash(command: string, options?: BashOptions): Promise<BashResult>;
-	executeBashStreaming(
-		command: string,
-		options: BashOptions,
-		onChunk: (chunk: string) => void,
-	): Promise<BashResult>;
 }
 
 export interface ToolDefinition {

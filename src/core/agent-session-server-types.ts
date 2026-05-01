@@ -193,6 +193,7 @@ export type GlobalServerEvent =
 	| { type: "session_created"; sessionId: string; info: SessionListItem }
 	| { type: "session_updated"; sessionId: string; info: SessionListItem }
 	| { type: "session_deleted"; sessionId: string }
+	| { type: "session_renamed"; sessionId: string; name: string }
 	| { type: "session_status_changed"; sessionId: string; status: "idle" | "busy" | "retry" };
 
 export interface SessionListItem {

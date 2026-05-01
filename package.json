@@ -10,6 +10,10 @@
 			"types": "./dist/index.d.ts",
 			"import": "./dist/index.js"
 		},
+		"./client": {
+			"types": "./dist/client.d.ts",
+			"import": "./dist/client.js"
+		},
 		"./hooks": {
 			"types": "./dist/core/hooks/index.d.ts",
 			"import": "./dist/core/hooks/index.js"
@@ -23,6 +27,7 @@
 	},
 	"dependencies": {
 		"@mariozechner/jiti": "^2.6.2",
+		"effect": "^3.21.0",
 		"@mariozechner/pi-ai": "^0.66.1",
 		"@shiit/agent-core": "^0.66.1",
 		"@shiit/id": "^0.1.0",
