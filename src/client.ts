@@ -18,6 +18,4 @@ export type {
 	SessionSnapshot,
 } from "./core/agent-session-server-types.js";
 export type { SessionStore } from "./core/session-store.js";
-export type { ToolBackend, ToolResult, BashOptions } from "./core/tool-backend.js";
 export { Transport, type Connection, type TransportFactory } from "./core/transport.js";
-export type { BashResult } from "./core/bash-executor.js";

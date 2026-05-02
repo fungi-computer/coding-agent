@@ -24,8 +24,7 @@ export type SessionCommand =
 	| { type: "set_thinking_level"; level: ThinkingLevel }
 	| { type: "set_tools"; toolNames: string[] }
 	| { type: "navigate_tree"; leafId: string }
-	| { type: "compact"; reason?: "manual" | "threshold" | "overflow" }
-	| { type: "submit_user_bash"; command: string; excludeFromContext?: boolean };
+	| { type: "compact"; reason?: "manual" | "threshold" | "overflow" };
 
 // ============================================================================
 // Client Message (Client → Server, over WebSocket)
@@ -92,12 +91,7 @@ export type AgentSessionSyncEvent =
 	| { type: "session_metadata_changed"; sessionName?: string }
 	| { type: "label_changed"; targetId: string; label: string | undefined }
 	| { type: "context_usage_changed"; usage?: ContextUsage }
-	| { type: "resources_changed"; resources: SessionResources }
-
-	// Bash
-	| { type: "bash_start"; command: string; excludeFromContext: boolean }
-	| { type: "bash_output"; command: string; chunk: string }
-	| { type: "bash_end"; command: string; result?: unknown; excludeFromContext: boolean };
+	| { type: "resources_changed"; resources: SessionResources };
 
 // ============================================================================
 // Session Resources
@@ -167,12 +161,6 @@ export interface SessionSnapshot {
 		maxAttempts?: number;
 		delayMs?: number;
 		errorMessage?: string;
-	};
-	bash?: {
-		active: boolean;
-		command?: string;
-		outputSoFar?: string;
-		excludeFromContext?: boolean;
 	};
 
 	// Context usage

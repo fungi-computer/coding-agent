@@ -8,7 +8,6 @@
 import type { AgentMessage, ThinkingLevel } from "@shiit/agent-core";
 import type { ImageContent, Model } from "@mariozechner/pi-ai";
 import type { SessionStats } from "../../core/agent-session.js";
-import type { BashResult } from "../../core/bash-executor.js";
 import type { CompactionResult } from "../../core/compaction/index.js";
 import type { SourceInfo } from "../../core/source-info.js";
 
@@ -47,10 +46,6 @@ export type RpcCommand =
 	// Retry
 	| { id?: string; type: "set_auto_retry"; enabled: boolean }
 	| { id?: string; type: "abort_retry" }
-
-	// Bash
-	| { id?: string; type: "bash"; command: string }
-	| { id?: string; type: "abort_bash" }
 
 	// Session
 	| { id?: string; type: "get_session_stats" }
@@ -162,10 +157,6 @@ export type RpcResponse =
 	// Retry
 	| { id?: string; type: "response"; command: "set_auto_retry"; success: true }
 	| { id?: string; type: "response"; command: "abort_retry"; success: true }
-
-	// Bash
-	| { id?: string; type: "response"; command: "bash"; success: true; data: BashResult }
-	| { id?: string; type: "response"; command: "abort_bash"; success: true }
 
 	// Session
 	| { id?: string; type: "response"; command: "get_session_stats"; success: true; data: SessionStats }

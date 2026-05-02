@@ -2,16 +2,8 @@ import { describe, test, expect, beforeEach, vi } from "vitest";
 import { AgentSessionServer } from "../../src/core/agent-session-server.js";
 import { InMemoryTransport } from "../../src/core/in-memory-transport.js";
 import { InMemorySessionStore } from "../../src/core/in-memory-session-store.js";
-import type { ToolBackend } from "../../src/core/tool-backend.js";
 import type { SessionFactory } from "../../src/core/agent-session-server-types.js";
 import type { AgentSession } from "../../src/core/agent-session.js";
-
-const noopToolBackend: ToolBackend = {
-	tools: [],
-	executeTool: async () => ({ content: null }),
-	executeBash: async () => ({ stdout: "", stderr: "", exitCode: 0, wasTruncated: false }),
-	executeBashStreaming: async () => ({ stdout: "", stderr: "", exitCode: 0, wasTruncated: false }),
-};
 
 const createMockSessionFactory = (session?: Partial<AgentSession> | null): SessionFactory => {
 	const defaultSession: Partial<AgentSession> = {
@@ -28,7 +20,6 @@ const createMockSessionFactory = (session?: Partial<AgentSession> | null): Sessi
 		setActiveToolsByName: vi.fn(),
 		navigateTree: vi.fn().mockResolvedValue(undefined),
 		compact: vi.fn().mockResolvedValue(undefined),
-		submitUserBash: vi.fn().mockResolvedValue(undefined),
 	};
 	return {
 		createSession: vi.fn().mockResolvedValue(session ?? defaultSession),
@@ -46,7 +37,7 @@ describe("AgentSessionServer", () => {
 		test("createSession returns snapshot with sessionId", async () => {
 			const transport = new InMemoryTransport();
 			const store = new InMemorySessionStore();
-			const server = new AgentSessionServer(store, createMockSessionFactory(), () => noopToolBackend, mockModelRegistry, transport);
+			const server = new AgentSessionServer(store, createMockSessionFactory(), mockModelRegistry, transport);
 
 			await server.start();
 			const result = await server.createSession("/tmp");
@@ -62,7 +53,7 @@ describe("AgentSessionServer", () => {
 		test("listSessions returns created session", async () => {
 			const transport = new InMemoryTransport();
 			const store = new InMemorySessionStore();
-			const server = new AgentSessionServer(store, createMockSessionFactory(), () => noopToolBackend, mockModelRegistry, transport);
+			const server = new AgentSessionServer(store, createMockSessionFactory(), mockModelRegistry, transport);
 
 			await server.start();
 			const { sessionId } = await server.createSession("/tmp");
@@ -81,7 +72,7 @@ describe("AgentSessionServer", () => {
 		test("start emits server_connected event", async () => {
 			const transport = new InMemoryTransport();
 			const store = new InMemorySessionStore();
-			const server = new AgentSessionServer(store, createMockSessionFactory(), () => noopToolBackend, mockModelRegistry, transport);
+			const server = new AgentSessionServer(store, createMockSessionFactory(), mockModelRegistry, transport);
 
 			const events: any[] = [];
 			server.subscribeGlobal((e) => events.push(e));
@@ -96,7 +87,7 @@ describe("AgentSessionServer", () => {
 		test("stop emits server_shutdown event", async () => {
 			const transport = new InMemoryTransport();
 			const store = new InMemorySessionStore();
-			const server = new AgentSessionServer(store, createMockSessionFactory(), () => noopToolBackend, mockModelRegistry, transport);
+			const server = new AgentSessionServer(store, createMockSessionFactory(), mockModelRegistry, transport);
 
 			const events: any[] = [];
 			server.subscribeGlobal((e) => events.push(e));
@@ -112,7 +103,7 @@ describe("AgentSessionServer", () => {
 		test("server emits session_created global event when session created", async () => {
 			const transport = new InMemoryTransport();
 			const store = new InMemorySessionStore();
-			const server = new AgentSessionServer(store, createMockSessionFactory(), () => noopToolBackend, mockModelRegistry, transport);
+			const server = new AgentSessionServer(store, createMockSessionFactory(), mockModelRegistry, transport);
 
 			const globalEvents: any[] = [];
 			server.subscribeGlobal((e) => globalEvents.push(e));
@@ -134,7 +125,7 @@ describe("AgentSessionServer", () => {
 			const transport = new InMemoryTransport();
 			const store = new InMemorySessionStore();
 			const factory = createMockSessionFactory();
-			const server = new AgentSessionServer(store, factory, () => noopToolBackend, mockModelRegistry, transport);
+			const server = new AgentSessionServer(store, factory, mockModelRegistry, transport);
 
 			await server.start();
 			const { sessionId } = await server.createSession("/tmp");
@@ -151,7 +142,7 @@ describe("AgentSessionServer", () => {
 			const transport = new InMemoryTransport();
 			const store = new InMemorySessionStore();
 			const factory = createMockSessionFactory();
-			const server = new AgentSessionServer(store, factory, () => noopToolBackend, mockModelRegistry, transport);
+			const server = new AgentSessionServer(store, factory, mockModelRegistry, transport);
 
 			await server.start();
 			const { sessionId } = await server.createSession("/tmp");
@@ -182,10 +173,9 @@ describe("AgentSessionServer", () => {
 				setActiveToolsByName: vi.fn(),
 				navigateTree: vi.fn().mockResolvedValue(undefined),
 				compact: vi.fn().mockResolvedValue(undefined),
-				submitUserBash: vi.fn().mockResolvedValue(undefined),
 			};
 			const factory = createMockSessionFactory(mockSession as unknown as AgentSession);
-			const server = new AgentSessionServer(store, factory, () => noopToolBackend, mockModelRegistry, transport);
+			const server = new AgentSessionServer(store, factory, mockModelRegistry, transport);
 
 			await server.start();
 			const { sessionId } = await server.createSession("/tmp");
@@ -211,10 +201,9 @@ describe("AgentSessionServer", () => {
 				setActiveToolsByName: vi.fn(),
 				navigateTree: vi.fn().mockResolvedValue(undefined),
 				compact: vi.fn().mockResolvedValue(undefined),
-				submitUserBash: vi.fn().mockResolvedValue(undefined),
 			};
 			const factory = createMockSessionFactory(mockSession as unknown as AgentSession);
-			const server = new AgentSessionServer(store, factory, () => noopToolBackend, mockModelRegistry, transport);
+			const server = new AgentSessionServer(store, factory, mockModelRegistry, transport);
 
 			await server.start();
 			const { sessionId } = await server.createSession("/tmp");
@@ -230,7 +219,7 @@ describe("AgentSessionServer", () => {
 			const transport = new InMemoryTransport();
 			const store = new InMemorySessionStore();
 			const factory = createMockSessionFactory();
-			const server = new AgentSessionServer(store, factory, () => noopToolBackend, mockModelRegistry, transport);
+			const server = new AgentSessionServer(store, factory, mockModelRegistry, transport);
 
 			await server.start();
 
@@ -258,11 +247,9 @@ describe("AgentSessionServer", () => {
 				setActiveToolsByName: vi.fn(),
 				navigateTree: vi.fn().mockResolvedValue(undefined),
 				compact: vi.fn().mockResolvedValue(undefined),
-				submitUserBash: vi.fn().mockResolvedValue(undefined),
 			};
 			const factory = createMockSessionFactory(mockSession as unknown as AgentSession);
-			// @ts-expect-error - ModelRegistry not yet in constructor
-			const server = new AgentSessionServer(store, factory, () => noopToolBackend, mockModelRegistry, transport);
+			const server = new AgentSessionServer(store, factory, mockModelRegistry, transport);
 
 			await server.start();
 			const { sessionId } = await server.createSession("/tmp");
@@ -298,7 +285,6 @@ describe("AgentSessionServer", () => {
 				setActiveToolsByName: vi.fn(),
 				navigateTree: vi.fn().mockResolvedValue(undefined),
 				compact: vi.fn().mockResolvedValue(undefined),
-				submitUserBash: vi.fn().mockResolvedValue(undefined),
 				dispose: vi.fn(),
 				subscribe: vi.fn((listener: (event: any) => void) => {
 					mockSession._listener = listener;
@@ -310,7 +296,7 @@ describe("AgentSessionServer", () => {
 			};
 
 			const factory = createMockSessionFactory(mockSession as unknown as AgentSession);
-			const server = new AgentSessionServer(store, factory, () => noopToolBackend, mockModelRegistry, transport);
+			const server = new AgentSessionServer(store, factory, mockModelRegistry, transport);
 
 			await server.start();
 			const { sessionId } = await server.createSession("/tmp");
@@ -349,7 +335,6 @@ describe("AgentSessionServer", () => {
 				setActiveToolsByName: vi.fn(),
 				navigateTree: vi.fn().mockResolvedValue(undefined),
 				compact: vi.fn().mockResolvedValue(undefined),
-				submitUserBash: vi.fn().mockResolvedValue(undefined),
 				dispose: vi.fn(),
 				subscribe: vi.fn((listener: (event: any) => void) => {
 					mockSession._listener = listener;
@@ -361,7 +346,7 @@ describe("AgentSessionServer", () => {
 			};
 
 			const factory = createMockSessionFactory(mockSession as unknown as AgentSession);
-			const server = new AgentSessionServer(store, factory, () => noopToolBackend, mockModelRegistry, transport);
+			const server = new AgentSessionServer(store, factory, mockModelRegistry, transport);
 
 			await server.start();
 			await server.joinSession(sessionId);

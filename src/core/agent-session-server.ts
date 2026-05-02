@@ -9,7 +9,6 @@ import type { Model } from "@mariozechner/pi-ai";
 import type { AgentSession } from "./agent-session.js";
 import type { SessionStore, SessionListItem } from "./session-store.js";
 import type { SessionSnapshot, SessionFactory } from "./agent-session-server-types.js";
-import type { ToolBackend } from "./tool-backend.js";
 import type { Transport, Connection } from "./transport.js";
 import type { ModelRegistry } from "./model-registry.js";
 import type {
@@ -21,7 +20,6 @@ import type {
 export class AgentSessionServer {
 	private readonly _sessionStore: SessionStore;
 	private readonly _sessionFactory: SessionFactory;
-	private readonly _toolBackendFactory: (sessionId: string) => ToolBackend;
 	private readonly _modelRegistry: ModelRegistry;
 	private readonly _transport: Transport;
 
@@ -33,13 +31,11 @@ export class AgentSessionServer {
 	constructor(
 		sessionStore: SessionStore,
 		sessionFactory: SessionFactory,
-		toolBackendFactory: (sessionId: string) => ToolBackend,
 		modelRegistry: ModelRegistry,
 		transport: Transport,
 	) {
 		this._sessionStore = sessionStore;
 		this._sessionFactory = sessionFactory;
-		this._toolBackendFactory = toolBackendFactory;
 		this._modelRegistry = modelRegistry;
 		this._transport = transport;
 	}
@@ -186,11 +182,6 @@ export class AgentSessionServer {
 			case "compact":
 				await state.session.compact(cmd.reason);
 				break;
-			case "submit_user_bash":
-				await state.session.submitUserBash(cmd.command, undefined, {
-					excludeFromContext: cmd.excludeFromContext,
-				});
-				break;
 		}
 	}
 
@@ -286,7 +277,6 @@ export interface SessionHandle {
 	setActiveToolsByName(toolNames: string[]): void;
 	navigateTree(leafId: string, label?: string): Promise<void>;
 	compact(reason?: "manual" | "threshold" | "overflow"): Promise<void>;
-	submitUserBash(command: string, excludeFromContext?: boolean): Promise<void>;
 	subscribe(listener: (event: any) => void): () => void;
 	dispose(): void;
 }

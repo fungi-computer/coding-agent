@@ -107,7 +107,6 @@ export type ToolRenderContext = any;
 export type WriteToolCallEvent = any;
 export type AppMode = any;
 export type AssistantMessage = any;
-export type BashResult = any;
 export type CustomMessage = any;
 export type PendingToolCall = any;
 export type SessionStartOrigin = any;

@@ -29,7 +29,6 @@ import { isContextOverflow, modelsAreEqual, resetApiProviders, supportsXhigh } f
 import { getDocsPath } from "../config.js";
 import { stripFrontmatter } from "../utils/frontmatter.js";
 import { sleep } from "../utils/sleep.js";
-import { type BashResult, executeBashWithOperations } from "./bash-executor.js";
 import {
 	type CompactionResult,
 	calculateContextTokens,
@@ -63,11 +62,9 @@ import {
 	type TreePreparation,
 	type TurnEndEvent,
 	type TurnStartEvent,
-	type UserBashEvent,
-	type UserBashEventResult,
 	wrapRegisteredTools,
 } from "./extensions/index.js";
-import type { BashExecutionMessage, CustomMessage } from "./messages.js";
+import type { CustomMessage } from "./messages.js";
 import type { ModelRegistry } from "./model-registry.js";
 import { expandPromptTemplate, type PromptTemplate } from "./prompt-templates.js";
 import type { ResourceExtensionPaths, ResourceLoader } from "./resource-loader.js";
@@ -142,14 +139,6 @@ export type AgentSessionEvent =
 	  }
 	| { type: "auto_retry_start"; attempt: number; maxAttempts: number; delayMs: number; errorMessage: string }
 	| { type: "auto_retry_end"; success: boolean; attempt: number; finalError?: string }
-	| { type: "bash_start"; command: string; excludeFromContext: boolean }
-	| { type: "bash_output"; command: string; chunk: string }
-	| {
-			type: "bash_end";
-			command: string;
-			result: BashResult;
-			excludeFromContext: boolean;
-	  }
 	| {
 			type: "model_changed";
 			model: Model<any> | undefined;
@@ -358,10 +347,6 @@ export class AgentSession {
 	private _retryAttempt = 0;
 	private _retryPromise: Promise<void> | undefined = undefined;
 	private _retryResolve: (() => void) | undefined = undefined;
-
-	// Bash execution state
-	private _bashAbortController: AbortController | undefined = undefined;
-	private _pendingBashMessages: BashExecutionMessage[] = [];
 
 	// Extension system
 	private _extensionRunner: ExtensionRunner | undefined = undefined;
@@ -644,7 +629,7 @@ export class AgentSession {
 				// Regular LLM message - persist as SessionMessageEntry
 				this.sessionManager.appendMessage(event.message);
 			}
-			// Other message types (bashExecution, compactionSummary, branchSummary) are persisted elsewhere
+			// Other message types (compactionSummary, branchSummary) are persisted elsewhere
 
 			// Track assistant message for auto-compaction (checked on agent_end)
 			if (event.message.role === "assistant") {
@@ -873,7 +858,7 @@ export class AgentSession {
 		);
 	}
 
-	/** All messages including custom types like BashExecutionMessage */
+	/** All messages including custom types */
 	get messages(): AgentMessage[] {
 		return this.agent.state.messages;
 	}
@@ -1042,9 +1027,6 @@ export class AgentSession {
 			}
 			return;
 		}
-
-		// Flush any pending bash messages before the new prompt
-		this._flushPendingBashMessages();
 
 		// Validate model
 		if (!this.model) {
@@ -2600,104 +2582,6 @@ export class AgentSession {
 	 */
 	setAutoRetryEnabled(enabled: boolean): void {
 		this.settingsManager.setRetryEnabled(enabled);
-	}
-
-	// =========================================================================
-	// Bash Execution
-	// =========================================================================
-
-	/**
-	 * Execute a bash command.
-	 * Adds result to agent context and session.
-	 *
-	 * @deprecated Bash execution should be provided via tools in the environment.
-	 *             This method throws an error. Use tools instead.
-	 */
-	async executeBash(
-		_command: string,
-		_onChunk?: (chunk: string) => void,
-		_options?: { excludeFromContext?: boolean },
-	): Promise<BashResult> {
-		throw new Error("executeBash is not supported. Use tools to execute bash instead.");
-	}
-
-	/**
-	 * Record a bash execution result in session history.
-	 * Used by executeBash and by extensions that handle bash execution themselves.
-	 */
-	recordBashResult(command: string, result: BashResult, options?: { excludeFromContext?: boolean }): void {
-		const bashMessage: BashExecutionMessage = {
-			role: "bashExecution",
-			command,
-			output: result.output,
-			exitCode: result.exitCode,
-			cancelled: result.cancelled,
-			truncated: result.truncated,
-			fullOutputPath: result.fullOutputPath,
-			timestamp: Date.now(),
-			excludeFromContext: options?.excludeFromContext,
-		};
-
-		// If agent is streaming, defer adding to avoid breaking tool_use/tool_result ordering
-		if (this.isStreaming) {
-			// Queue for later - will be flushed on agent_end
-			this._pendingBashMessages.push(bashMessage);
-		} else {
-			// Add to agent state immediately
-			this.agent.state.messages.push(bashMessage);
-
-			// Save to session
-			this.sessionManager.appendMessage(bashMessage);
-		}
-	}
-
-	/**
-	 * Cancel running bash command.
-	 */
-	abortBash(): void {
-		this._bashAbortController?.abort();
-	}
-
-	/**
-	 * Submit a user bash command for execution.
-	 *
-	 * @deprecated Bash execution should be provided via tools in the environment.
-	 *             This method throws an error. Use tools instead.
-	 */
-	async submitUserBash(
-		_command: string,
-		_onChunk?: (chunk: string) => void,
-		_options?: { excludeFromContext?: boolean },
-	): Promise<BashResult> {
-		throw new Error("submitUserBash is not supported. Use tools to execute bash instead.");
-	}
-
-	/** Whether a bash command is currently running */
-	get isBashRunning(): boolean {
-		return false;
-	}
-
-	/** Whether there are pending bash messages waiting to be flushed */
-	get hasPendingBashMessages(): boolean {
-		return this._pendingBashMessages.length > 0;
-	}
-
-	/**
-	 * Flush pending bash messages to agent state and session.
-	 * Called after agent turn completes to maintain proper message ordering.
-	 */
-	private _flushPendingBashMessages(): void {
-		if (this._pendingBashMessages.length === 0) return;
-
-		for (const bashMessage of this._pendingBashMessages) {
-			// Add to agent state
-			this.agent.state.messages.push(bashMessage);
-
-			// Save to session
-			this.sessionManager.appendMessage(bashMessage);
-		}
-
-		this._pendingBashMessages = [];
 	}
 
 	// =========================================================================

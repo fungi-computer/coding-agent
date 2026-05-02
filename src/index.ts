@@ -213,18 +213,10 @@ export {
 	type SessionStore,
 } from "./core/session-store.js";
 export {
-	type ToolBackend,
-	type ToolResult,
-	type BashOptions,
-} from "./core/tool-backend.js";
-export {
 	Transport,
 	type Connection,
 	type TransportFactory,
 } from "./core/transport.js";
-export {
-	type BashResult,
-} from "./core/bash-executor.js";
 export {
 	type CompactionSettings,
 	type ImageSettings,
