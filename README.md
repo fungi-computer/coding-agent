@@ -1,8 +1,8 @@
 # @shiit/coding-agent
 
 ---
-WARNING!!! THIS IS A HIGH EFFORT SLOP FORK, USE AT YOUR OWN RISK
----
+
+## WARNING!!! THIS IS A HIGH EFFORT SLOP FORK, USE AT YOUR OWN RISK
 
 Fork of `@mariozechner/pi-coding-agent` with client/server architecture support for Cloudflare Workers.
 
@@ -42,11 +42,11 @@ bun add @shiit/coding-agent
 
 ## Subpath Exports
 
-| Export | Purpose |
-|--------|---------|
-| `@shiit/coding-agent` | Server (`AgentSessionServer`, `Transport`, `ToolBackend`, etc.) |
-| `@shiit/coding-agent/client` | Client (`AgentSessionClient`, `WebSocketClientTransport`) |
-| `@shiit/coding-agent/hooks` | React hooks for client integration |
+| Export                       | Purpose                                                         |
+| ---------------------------- | --------------------------------------------------------------- |
+| `@shiit/coding-agent`        | Server (`AgentSessionServer`, `Transport`, `ToolBackend`, etc.) |
+| `@shiit/coding-agent/client` | Client (`AgentSessionClient`, `WebSocketClientTransport`)       |
+| `@shiit/coding-agent/hooks`  | React hooks for client integration                              |
 
 ## Server Usage
 
@@ -54,11 +54,11 @@ bun add @shiit/coding-agent
 import { AgentSessionServer } from "@shiit/coding-agent";
 
 const server = new AgentSessionServer(
-  sessionStore,           // SessionStore implementation
-  sessionFactory,         // SessionFactory implementation
-  toolBackendFactory,     // (sessionId: string) => ToolBackend
-  modelRegistry,          // ModelRegistry
-  transport,              // Transport implementation
+  sessionStore, // SessionStore implementation
+  sessionFactory, // SessionFactory implementation
+  toolBackendFactory, // (sessionId: string) => ToolBackend
+  modelRegistry, // ModelRegistry
+  transport, // Transport implementation
 );
 
 server.start();
@@ -69,7 +69,10 @@ server.start();
 ## Client Usage
 
 ```typescript
-import { AgentSessionClient, WebSocketClientTransport } from "@shiit/coding-agent/client";
+import {
+  AgentSessionClient,
+  WebSocketClientTransport,
+} from "@shiit/coding-agent/client";
 
 const transport = new WebSocketClientTransport({
   url: "wss://user.fungi.computer/ws/session/session-id",
@@ -95,39 +98,39 @@ client.subscribeSession("session-id", (event) => {
 
 ### Server
 
-| Export | What It Is |
-|--------|------------|
-| `AgentSessionServer` | Manages sessions, broadcasts events via Transport |
-| `Transport` / `Connection` | Abstract transport interface |
-| `ToolBackend` | Abstract tool execution interface |
-| `SessionStore` / `SessionData` / `SessionListItem` | Persistence abstractions |
-| `SessionSnapshot` / `SessionCommand` / `AgentSessionSyncEvent` / `GlobalServerEvent` | Protocol types |
-| `AgentSession` | Individual session instance |
-| `createAgentSession` / `AgentSessionRuntime` / `AgentSessionServices` | SDK entrypoints |
-| `SettingsManager` | Session settings management |
-| `AuthStorage` / `FileAuthStorageBackend` | Auth persistence |
+| Export                                                                               | What It Is                                        |
+| ------------------------------------------------------------------------------------ | ------------------------------------------------- |
+| `AgentSessionServer`                                                                 | Manages sessions, broadcasts events via Transport |
+| `Transport` / `Connection`                                                           | Abstract transport interface                      |
+| `ToolBackend`                                                                        | Abstract tool execution interface                 |
+| `SessionStore` / `SessionData` / `SessionListItem`                                   | Persistence abstractions                          |
+| `SessionSnapshot` / `SessionCommand` / `AgentSessionSyncEvent` / `GlobalServerEvent` | Protocol types                                    |
+| `AgentSession`                                                                       | Individual session instance                       |
+| `createAgentSession` / `AgentSessionRuntime` / `AgentSessionServices`                | SDK entrypoints                                   |
+| `SettingsManager`                                                                    | Session settings management                       |
+| `AuthStorage` / `FileAuthStorageBackend`                                             | Auth persistence                                  |
 
 ### Client
 
-| Export | What It Is |
-|--------|------------|
-| `AgentSessionClient` | Client for connecting to AgentSessionServer |
-| `WebSocketClientTransport` | WebSocket transport implementation |
-| `InMemoryTransport` | In-memory transport for testing |
+| Export                     | What It Is                                  |
+| -------------------------- | ------------------------------------------- |
+| `AgentSessionClient`       | Client for connecting to AgentSessionServer |
+| `WebSocketClientTransport` | WebSocket transport implementation          |
+| `InMemoryTransport`        | In-memory transport for testing             |
 
 ### Extensions
 
-| Export | What It Is |
-|--------|------------|
-| `Extension` / `ExtensionRunner` | Extension system |
-| `defineTool` / `defineCommand` | Extension tool/command definitions |
+| Export                          | What It Is                         |
+| ------------------------------- | ---------------------------------- |
+| `Extension` / `ExtensionRunner` | Extension system                   |
+| `defineTool` / `defineCommand`  | Extension tool/command definitions |
 
 ### Utilities
 
-| Export | What It Is |
-|--------|------------|
-| `compact` / `shouldCompact` / `calculateContextTokens` | Session compaction |
-| `InMemorySessionStore` | In-memory store for testing |
+| Export                                                 | What It Is                  |
+| ------------------------------------------------------ | --------------------------- |
+| `compact` / `shouldCompact` / `calculateContextTokens` | Session compaction          |
+| `InMemorySessionStore`                                 | In-memory store for testing |
 
 ## Key Features
 
@@ -145,6 +148,7 @@ client.subscribeSession("session-id", (event) => {
 This fork removes ~24,859 lines of TUI-dependent code:
 
 ### Deleted
+
 - **`core/tools/`** - Built-in CLI tools (read, bash, edit, write, grep, find, ls). Tools are now provided by the environment instead of baked-in.
 - **`core/export-html/`** - HTML export functionality (TUI-dependent)
 - **`modes/interactive/`** - Full TUI interactive mode (~40+ files, all interactive components, themes, keybindings)
@@ -153,16 +157,19 @@ This fork removes ~24,859 lines of TUI-dependent code:
 - **CLI TUI files** - Config selector, session picker, model lister
 
 ### Stubbed
+
 - **`core/bash-executor.ts`** - Now throws: "executeBash is not supported in cloud environment. Use tools instead."
 - **`core/extensions/`** - Extension system is stubbed (no-op types and implementations). Was deeply integrated with TUI. If you need extensions, reference upstream v0.66.1.
 
 ### Why
+
 - "Deploy anywhere" agents get tools from the environment, not baked-in defaults
 - TUI rendering belongs in clients, not the agent runtime
 
 ## Fork Origin
 
 Forked from `@mariozechner/pi-coding-agent@0.66.1` with cloud-specific modifications:
+
 - `AgentSessionServer` for client/server architecture
 - Transport and session store abstractions
 - Cloud-specific build patches

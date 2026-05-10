@@ -1,66 +1,66 @@
 {
-	"name": "@shiit/coding-agent",
-	"version": "0.66.1",
-	"description": "Fork of @mariozechner/pi-coding-agent for Cloudflare Workers",
-	"type": "module",
-	"main": "./dist/index.js",
-	"types": "./dist/index.d.ts",
-	"exports": {
-		".": {
-			"types": "./dist/index.d.ts",
-			"import": "./dist/index.js"
-		},
-		"./client": {
-			"types": "./dist/client.d.ts",
-			"import": "./dist/client.js"
-		},
-		"./hooks": {
-			"types": "./dist/core/hooks/index.d.ts",
-			"import": "./dist/core/hooks/index.js"
-		}
-	},
-	"scripts": {
-		"clean": "rm -rf dist",
-		"build": "tsc -p tsconfig.build.json",
-		"dev": "tsc -p tsconfig.build.json --watch",
-		"test": "vitest run"
-	},
-	"dependencies": {
-		"@mariozechner/jiti": "^2.6.2",
-		"effect": "^3.21.0",
-		"@mariozechner/pi-ai": "^0.66.1",
-		"@shiit/agent-core": "^0.66.1",
-		"@shiit/id": "^0.1.0",
-		"@sinclair/typebox": "^0.34.49",
-		"chalk": "^5.5.0",
-		"cli-highlight": "^2.1.11",
-		"diff": "^8.0.2",
-		"file-type": "^21.1.1",
-		"hosted-git-info": "^9.0.2",
-		"ignore": "^7.0.5",
-		"marked": "^15.0.12",
-		"minimatch": "^10.2.3",
-		"proper-lockfile": "^4.1.2",
-		"strip-ansi": "^7.1.0",
-		"yaml": "^2.8.3"
-	},
-	"devDependencies": {
-		"@silvia-odwyer/photon-node": "^0.3.4",
-		"@types/diff": "^7.0.2",
-		"@types/hosted-git-info": "^3.0.5",
-		"@types/node": "^20.0.0",
-		"@types/proper-lockfile": "^4.1.4",
-		"typescript": "^5.7.3",
-		"undici": "^8.0.2",
-		"vitest": "^3.2.4"
-	},
-	"keywords": [
-		"coding-agent",
-		"ai",
-		"llm",
-		"cli",
-		"tui",
-		"agent"
-	],
-	"license": "MIT"
+  "name": "@shiit/coding-agent",
+  "version": "0.66.1",
+  "description": "Fork of @mariozechner/pi-coding-agent for Cloudflare Workers",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./client": {
+      "types": "./dist/client.d.ts",
+      "import": "./dist/client.js"
+    },
+    "./hooks": {
+      "types": "./dist/core/hooks/index.d.ts",
+      "import": "./dist/core/hooks/index.js"
+    }
+  },
+  "scripts": {
+    "clean": "rm -rf dist",
+    "build": "tsc -p tsconfig.build.json",
+    "dev": "tsc -p tsconfig.build.json --watch",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@mariozechner/jiti": "^2.6.2",
+    "effect": "^3.21.0",
+    "@mariozechner/pi-ai": "^0.66.1",
+    "@shiit/agent-core": "^0.66.1",
+    "@shiit/id": "^0.1.0",
+    "@sinclair/typebox": "^0.34.49",
+    "chalk": "^5.5.0",
+    "cli-highlight": "^2.1.11",
+    "diff": "^8.0.2",
+    "file-type": "^21.1.1",
+    "hosted-git-info": "^9.0.2",
+    "ignore": "^7.0.5",
+    "marked": "^15.0.12",
+    "minimatch": "^10.2.3",
+    "proper-lockfile": "^4.1.2",
+    "strip-ansi": "^7.1.0",
+    "yaml": "^2.8.3"
+  },
+  "devDependencies": {
+    "@silvia-odwyer/photon-node": "^0.3.4",
+    "@types/diff": "^7.0.2",
+    "@types/hosted-git-info": "^3.0.5",
+    "@types/node": "^20.0.0",
+    "@types/proper-lockfile": "^4.1.4",
+    "typescript": "^5.7.3",
+    "undici": "^8.0.2",
+    "vitest": "^3.2.4"
+  },
+  "keywords": [
+    "coding-agent",
+    "ai",
+    "llm",
+    "cli",
+    "tui",
+    "agent"
+  ],
+  "license": "MIT"
 }

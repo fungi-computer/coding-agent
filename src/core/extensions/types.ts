@@ -128,150 +128,171 @@ export type wrapRegisteredTool = any;
 export const defineTool = (tool: any) => tool;
 export const createExtensionRuntime = () => ({});
 export const loadExtensions = (_paths?: any, _cwd?: any) => ({
-	extensions: [] as any[],
-	errors: [] as Array<{ path: string; error: string }>,
-	runtime: createExtensionRuntime()
+  extensions: [] as any[],
+  errors: [] as Array<{ path: string; error: string }>,
+  runtime: createExtensionRuntime(),
 });
-export const loadExtensionFromFactory = (_factory?: any, _cwd?: any, _runtime?: any, _extensionPath?: any) => undefined;
-export const emitSessionShutdownEvent = (_runner: any) => Promise.resolve(false);
-export function wrapRegisteredTools(registeredTools: any[], _runner: any): any[] {
-	return registeredTools.map((tool) => {
-		if (tool.definition?.invoke) {
-			const def = tool.definition;
-			return {
-				name: def.name,
-				label: def.label ?? def.name,
-				description: def.description,
-				parameters: def.parameters,
-				prepareArguments: def.prepareArguments,
-				execute: async (toolCallId: string, params: any, signal?: AbortSignal, onUpdate?: any) => {
-					const result = await def.invoke(params, { toolCallId, signal, onUpdate });
-					const content = typeof result === "string" ? [{ type: "text" as const, text: result }] : result;
-					return { content, details: {} };
-				},
-			};
-		}
-		if (tool.definition?.execute) {
-			return {
-				name: tool.definition.name,
-				label: tool.definition.label ?? tool.definition.name,
-				description: tool.definition.description,
-				parameters: tool.definition.parameters,
-				prepareArguments: tool.definition.prepareArguments,
-				execute: tool.definition.execute,
-			};
-		}
-		return {
-			name: tool.definition?.name,
-			label: tool.definition?.label ?? tool.definition?.name,
-			description: tool.definition?.description,
-			parameters: tool.definition?.parameters,
-			execute: tool.definition?.execute,
-		};
-	});
+export const loadExtensionFromFactory = (
+  _factory?: any,
+  _cwd?: any,
+  _runtime?: any,
+  _extensionPath?: any,
+) => undefined;
+export const emitSessionShutdownEvent = (_runner: any) =>
+  Promise.resolve(false);
+export function wrapRegisteredTools(
+  registeredTools: any[],
+  _runner: any,
+): any[] {
+  return registeredTools.map((tool) => {
+    if (tool.definition?.invoke) {
+      const def = tool.definition;
+      return {
+        name: def.name,
+        label: def.label ?? def.name,
+        description: def.description,
+        parameters: def.parameters,
+        prepareArguments: def.prepareArguments,
+        execute: async (
+          toolCallId: string,
+          params: any,
+          signal?: AbortSignal,
+          onUpdate?: any,
+        ) => {
+          const result = await def.invoke(params, {
+            toolCallId,
+            signal,
+            onUpdate,
+          });
+          const content =
+            typeof result === "string"
+              ? [{ type: "text" as const, text: result }]
+              : result;
+          return { content, details: {} };
+        },
+      };
+    }
+    if (tool.definition?.execute) {
+      return {
+        name: tool.definition.name,
+        label: tool.definition.label ?? tool.definition.name,
+        description: tool.definition.description,
+        parameters: tool.definition.parameters,
+        prepareArguments: tool.definition.prepareArguments,
+        execute: tool.definition.execute,
+      };
+    }
+    return {
+      name: tool.definition?.name,
+      label: tool.definition?.label ?? tool.definition?.name,
+      description: tool.definition?.description,
+      parameters: tool.definition?.parameters,
+      execute: tool.definition?.execute,
+    };
+  });
 }
 export const discoverAndLoadExtensions = () => ({ extensions: [], errors: [] });
 
 // ExtensionRunner as both type and value
 export const ExtensionRunner = class {
-	constructor(
-		_extensions?: unknown[],
-		_runtime?: unknown,
-		_cwd?: string,
-		_sessionManager?: unknown,
-		_modelRegistry?: unknown,
-	) {}
+  constructor(
+    _extensions?: unknown[],
+    _runtime?: unknown,
+    _cwd?: string,
+    _sessionManager?: unknown,
+    _modelRegistry?: unknown,
+  ) {}
 
-	bindCore(_core: any) {
-		// Stub - extensions not supported in cloud deployment
-	}
+  bindCore(_core: any) {
+    // Stub - extensions not supported in cloud deployment
+  }
 
-	bindCommandContext(_context: any) {
-		// Stub - extensions not supported in cloud deployment
-	}
+  bindCommandContext(_context: any) {
+    // Stub - extensions not supported in cloud deployment
+  }
 
-	emit(_event: any) {
-		// Stub - extensions not supported in cloud deployment
-		return Promise.resolve();
-	}
+  emit(_event: any) {
+    // Stub - extensions not supported in cloud deployment
+    return Promise.resolve();
+  }
 
-	emitError(_error: any) {
-		// Stub - extensions not supported in cloud deployment
-	}
+  emitError(_error: any) {
+    // Stub - extensions not supported in cloud deployment
+  }
 
-	emitToolCall(_toolCall: any, _context: any) {
-		// Stub - extensions not supported in cloud deployment
-		return Promise.resolve({ content: [] });
-	}
+  emitToolCall(_toolCall: any, _context: any) {
+    // Stub - extensions not supported in cloud deployment
+    return Promise.resolve({ content: [] });
+  }
 
-	emitToolResult(_result: any, _context: any) {
-		// Stub - extensions not supported in cloud deployment
-		return Promise.resolve();
-	}
+  emitToolResult(_result: any, _context: any) {
+    // Stub - extensions not supported in cloud deployment
+    return Promise.resolve();
+  }
 
-	emitBeforeProviderRequest(_payload: any) {
-		// Stub - extensions not supported in cloud deployment
-		return Promise.resolve({ skip: false });
-	}
+  emitBeforeProviderRequest(_payload: any) {
+    // Stub - extensions not supported in cloud deployment
+    return Promise.resolve({ skip: false });
+  }
 
-	emitContext(_messages: any) {
-		return Promise.resolve(_messages);
-	}
+  emitContext(_messages: any) {
+    return Promise.resolve(_messages);
+  }
 
-	emitInput(_input: any, _context: any) {
-		// Stub - extensions not supported in cloud deployment
-		return Promise.resolve({ content: "" });
-	}
+  emitInput(_input: any, _context: any) {
+    // Stub - extensions not supported in cloud deployment
+    return Promise.resolve({ content: "" });
+  }
 
-	emitBeforeAgentStart(_event: any, _context: any) {
-		// Stub - extensions not supported in cloud deployment
-		return Promise.resolve({ skip: false });
-	}
+  emitBeforeAgentStart(_event: any, _context: any) {
+    // Stub - extensions not supported in cloud deployment
+    return Promise.resolve({ skip: false });
+  }
 
-	emitResourcesDiscover(_cwd: any, _runtime: any) {
-		// Stub - extensions not supported in cloud deployment
-		return Promise.resolve({ skillPaths: [], promptPaths: [], themePaths: [] });
-	}
+  emitResourcesDiscover(_cwd: any, _runtime: any) {
+    // Stub - extensions not supported in cloud deployment
+    return Promise.resolve({ skillPaths: [], promptPaths: [], themePaths: [] });
+  }
 
-	dispose() {
-		// Stub - extensions not supported in cloud deployment
-	}
+  dispose() {
+    // Stub - extensions not supported in cloud deployment
+  }
 
-	setUIContext(_context: any) {
-		// Stub - extensions not supported in cloud deployment
-	}
+  setUIContext(_context: any) {
+    // Stub - extensions not supported in cloud deployment
+  }
 
-	hasHandlers(_eventType: string): boolean {
-		// Stub - extensions not supported in cloud deployment
-		return false;
-	}
+  hasHandlers(_eventType: string): boolean {
+    // Stub - extensions not supported in cloud deployment
+    return false;
+  }
 
-	getFlagValues(): Map<string, boolean | string> {
-		// Stub - extensions not supported in cloud deployment
-		return new Map();
-	}
+  getFlagValues(): Map<string, boolean | string> {
+    // Stub - extensions not supported in cloud deployment
+    return new Map();
+  }
 
-	onError(_listener: any) {
-		// Stub - extensions not supported in cloud deployment
-	}
+  onError(_listener: any) {
+    // Stub - extensions not supported in cloud deployment
+  }
 
-	getRegisteredCommands(): any[] {
-		// Stub - extensions not supported in cloud deployment
-		return [];
-	}
+  getRegisteredCommands(): any[] {
+    // Stub - extensions not supported in cloud deployment
+    return [];
+  }
 
-	getCommand(_name: string) {
-		// Stub - extensions not supported in cloud deployment
-		return undefined;
-	}
+  getCommand(_name: string) {
+    // Stub - extensions not supported in cloud deployment
+    return undefined;
+  }
 
-	createCommandContext() {
-		// Stub - extensions not supported in cloud deployment
-		return {};
-	}
+  createCommandContext() {
+    // Stub - extensions not supported in cloud deployment
+    return {};
+  }
 
-	getAllRegisteredTools(): any[] {
-		// Stub - extensions not supported in cloud deployment
-		return [];
-	}
+  getAllRegisteredTools(): any[] {
+    // Stub - extensions not supported in cloud deployment
+    return [];
+  }
 } as any;
