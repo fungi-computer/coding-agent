@@ -12,11 +12,11 @@ const EXIT_STDIO_GRACE_MS = 100;
  */
 export function waitForChildProcess(
   child: ChildProcess,
-): Promise<number | null> {
+): Promise<null | number> {
   return new Promise((resolve, reject) => {
     let settled = false;
     let exited = false;
-    let exitCode: number | null = null;
+    let exitCode: null | number = null;
     let postExitTimer: NodeJS.Timeout | undefined;
     let stdoutEnded = child.stdout === null;
     let stderrEnded = child.stderr === null;
@@ -33,7 +33,7 @@ export function waitForChildProcess(
       child.stderr?.removeListener("end", onStderrEnd);
     };
 
-    const finalize = (code: number | null) => {
+    const finalize = (code: null | number) => {
       if (settled) return;
       settled = true;
       cleanup();
@@ -66,7 +66,7 @@ export function waitForChildProcess(
       reject(err);
     };
 
-    const onExit = (code: number | null) => {
+    const onExit = (code: null | number) => {
       exited = true;
       exitCode = code;
       maybeFinalizeAfterExit();
@@ -75,7 +75,7 @@ export function waitForChildProcess(
       }
     };
 
-    const onClose = (code: number | null) => {
+    const onClose = (code: null | number) => {
       finalize(code);
     };
 

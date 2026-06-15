@@ -1,43 +1,43 @@
 import type { PathMetadata } from "./package-manager.js";
 
-export type SourceScope = "user" | "project" | "temporary";
+export interface SourceInfo {
+  baseDir?: string;
+  origin: SourceOrigin;
+  path: string;
+  scope: SourceScope;
+  source: string;
+}
 export type SourceOrigin = "package" | "top-level";
 
-export interface SourceInfo {
-  path: string;
-  source: string;
-  scope: SourceScope;
-  origin: SourceOrigin;
-  baseDir?: string;
-}
+export type SourceScope = "project" | "temporary" | "user";
 
 export function createSourceInfo(
   path: string,
   metadata: PathMetadata,
 ): SourceInfo {
   return {
-    path,
-    source: metadata.source,
-    scope: metadata.scope,
-    origin: metadata.origin,
     baseDir: metadata.baseDir,
+    origin: metadata.origin,
+    path,
+    scope: metadata.scope,
+    source: metadata.source,
   };
 }
 
 export function createSyntheticSourceInfo(
   path: string,
   options: {
-    source: string;
-    scope?: SourceScope;
-    origin?: SourceOrigin;
     baseDir?: string;
+    origin?: SourceOrigin;
+    scope?: SourceScope;
+    source: string;
   },
 ): SourceInfo {
   return {
-    path,
-    source: options.source,
-    scope: options.scope ?? "temporary",
-    origin: options.origin ?? "top-level",
     baseDir: options.baseDir,
+    origin: options.origin ?? "top-level",
+    path,
+    scope: options.scope ?? "temporary",
+    source: options.source,
   };
 }

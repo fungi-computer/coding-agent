@@ -3,14 +3,30 @@
 // Config paths
 export { getAgentDir, VERSION } from "./config.js";
 export {
+  AgentSessionClient,
+  type ClientTransport,
+} from "./core/agent-session-client.js";
+// AgentSessionServer types
+export {
+  type AgentSessionSyncEvent,
+  type ClientMessage,
+  type GlobalServerEvent,
+  type ServerMessage,
+  type SessionCommand,
+  type SessionFactory,
+  type SessionListItem,
+  type SessionSnapshot,
+} from "./core/agent-session-server-types.js";
+export { AgentSessionServer } from "./core/agent-session-server.js";
+export {
   AgentSession,
   type AgentSessionConfig,
   type AgentSessionEvent,
   type AgentSessionEventListener,
   type ModelCycleResult,
   type ParsedSkillBlock,
-  type PromptOptions,
   parseSkillBlock,
+  type PromptOptions,
   type SessionStats,
 } from "./core/agent-session.js";
 // Auth and model registry
@@ -27,19 +43,19 @@ export {
 export {
   type BranchPreparation,
   type BranchSummaryResult,
-  type CollectEntriesResult,
-  type CompactionResult,
-  type CutPointResult,
   calculateContextTokens,
   collectEntriesForBranchSummary,
+  type CollectEntriesResult,
   compact,
+  type CompactionResult,
+  type CutPointResult,
   DEFAULT_COMPACTION_SETTINGS,
   estimateTokens,
   type FileOperations,
   findCutPoint,
   findTurnStartIndex,
-  type GenerateBranchSummaryOptions,
   generateBranchSummary,
+  type GenerateBranchSummaryOptions,
   generateSummary,
   getLastAssistantUsage,
   prepareBranchEntries,
@@ -167,17 +183,17 @@ export {
   AgentSessionRuntime,
   type AgentSessionRuntimeDiagnostic,
   type AgentSessionServices,
-  type CreateAgentSessionFromServicesOptions,
-  type CreateAgentSessionOptions,
-  type CreateAgentSessionResult,
-  type CreateAgentSessionRuntimeFactory,
-  type CreateAgentSessionRuntimeResult,
-  type CreateAgentSessionServicesOptions,
   // Factory
   createAgentSession,
   createAgentSessionFromServices,
+  type CreateAgentSessionFromServicesOptions,
+  type CreateAgentSessionOptions,
+  type CreateAgentSessionResult,
   createAgentSessionRuntime,
+  type CreateAgentSessionRuntimeFactory,
+  type CreateAgentSessionRuntimeResult,
   createAgentSessionServices,
+  type CreateAgentSessionServicesOptions,
   type PromptTemplate,
 } from "./core/sdk.js";
 export {
@@ -189,8 +205,8 @@ export {
   type CustomMessageEntry,
   type FileEntry,
   getLatestCompactionEntry,
-  type ModelChangeEntry,
   migrateSessionEntries,
+  type ModelChangeEntry,
   type NewSessionOptions,
   parseSessionEntries,
   type SessionContext,
@@ -203,29 +219,7 @@ export {
   type SessionMessageEntry,
   type ThinkingLevelChangeEntry,
 } from "./core/session-manager.js";
-// AgentSessionServer types
-export {
-  type AgentSessionSyncEvent,
-  type ClientMessage,
-  type ServerMessage,
-  type GlobalServerEvent,
-  type SessionCommand,
-  type SessionFactory,
-  type SessionListItem,
-  type SessionSnapshot,
-} from "./core/agent-session-server-types.js";
-export { AgentSessionServer } from "./core/agent-session-server.js";
-export {
-  AgentSessionClient,
-  type ClientTransport,
-} from "./core/agent-session-client.js";
-export { WebSocketClientTransport } from "./core/websocket-client-transport.js";
 export { type SessionStore } from "./core/session-store.js";
-export {
-  Transport,
-  type Connection,
-  type TransportFactory,
-} from "./core/transport.js";
 export {
   type CompactionSettings,
   type ImageSettings,
@@ -236,14 +230,20 @@ export {
 // Skills
 export {
   formatSkillsForPrompt,
-  type LoadSkillsFromDirOptions,
-  type LoadSkillsResult,
   loadSkills,
   loadSkillsFromDir,
+  type LoadSkillsFromDirOptions,
+  type LoadSkillsResult,
   type Skill,
   type SkillFrontmatter,
 } from "./core/skills.js";
 export { createSyntheticSourceInfo } from "./core/source-info.js";
+export {
+  type Connection,
+  Transport,
+  type TransportFactory,
+} from "./core/transport.js";
+export { WebSocketClientTransport } from "./core/websocket-client-transport.js";
 // Run modes for programmatic SDK usage
 export {
   type PrintModeOptions,

@@ -1,51 +1,54 @@
 import type { PhotonImageType } from "./photon.js";
 
+type DstIndexFn = (x: number, y: number, w: number, h: number) => number;
+
 type Photon = typeof import("@silvia-odwyer/photon-node");
 
-function readOrientationFromTiff(bytes: Uint8Array, tiffStart: number): number {
-  if (tiffStart + 8 > bytes.length) return 1;
+// Flip orientations mutate in-place. Rotations return a new image (caller must free the old one if different).
+export function applyExifOrientation(
+  photon: Photon,
+  image: PhotonImageType,
+  originalBytes: Uint8Array,
+): PhotonImageType {
+  const orientation = getExifOrientation(originalBytes);
+  if (orientation === 1) return image;
 
-  const byteOrder = (bytes[tiffStart] << 8) | bytes[tiffStart + 1];
-  const le = byteOrder === 0x4949;
-
-  const read16 = (pos: number): number => {
-    if (le) return bytes[pos] | (bytes[pos + 1] << 8);
-    return (bytes[pos] << 8) | bytes[pos + 1];
-  };
-
-  const read32 = (pos: number): number => {
-    if (le)
-      return (
-        bytes[pos] |
-        (bytes[pos + 1] << 8) |
-        (bytes[pos + 2] << 16) |
-        (bytes[pos + 3] << 24)
+  switch (orientation) {
+    case 2:
+      photon.fliph(image);
+      return image;
+    case 3:
+      photon.fliph(image);
+      photon.flipv(image);
+      return image;
+    case 4:
+      photon.flipv(image);
+      return image;
+    case 5: {
+      const rotated = rotate90(
+        photon,
+        image,
+        (x, y, _w, h) => x * h + (h - 1 - y),
       );
-    return (
-      ((bytes[pos] << 24) |
-        (bytes[pos + 1] << 16) |
-        (bytes[pos + 2] << 8) |
-        bytes[pos + 3]) >>>
-      0
-    );
-  };
-
-  const ifdOffset = read32(tiffStart + 4);
-  const ifdStart = tiffStart + ifdOffset;
-  if (ifdStart + 2 > bytes.length) return 1;
-
-  const entryCount = read16(ifdStart);
-  for (let i = 0; i < entryCount; i++) {
-    const entryPos = ifdStart + 2 + i * 12;
-    if (entryPos + 12 > bytes.length) return 1;
-
-    if (read16(entryPos) === 0x0112) {
-      const value = read16(entryPos + 8);
-      return value >= 1 && value <= 8 ? value : 1;
+      photon.fliph(rotated);
+      return rotated;
     }
+    case 6:
+      return rotate90(photon, image, (x, y, _w, h) => x * h + (h - 1 - y));
+    case 7: {
+      const rotated = rotate90(
+        photon,
+        image,
+        (x, y, w, h) => (w - 1 - x) * h + y,
+      );
+      photon.fliph(rotated);
+      return rotated;
+    }
+    case 8:
+      return rotate90(photon, image, (x, y, w, h) => (w - 1 - x) * h + y);
+    default:
+      return image;
   }
-
-  return 1;
 }
 
 function findJpegTiffOffset(bytes: Uint8Array): number {
@@ -107,17 +110,6 @@ function findWebpTiffOffset(bytes: Uint8Array): number {
   return -1;
 }
 
-function hasExifHeader(bytes: Uint8Array, offset: number): boolean {
-  return (
-    bytes[offset] === 0x45 &&
-    bytes[offset + 1] === 0x78 &&
-    bytes[offset + 2] === 0x69 &&
-    bytes[offset + 3] === 0x66 &&
-    bytes[offset + 4] === 0x00 &&
-    bytes[offset + 5] === 0x00
-  );
-}
-
 function getExifOrientation(bytes: Uint8Array): number {
   let tiffOffset = -1;
 
@@ -144,7 +136,62 @@ function getExifOrientation(bytes: Uint8Array): number {
   return readOrientationFromTiff(bytes, tiffOffset);
 }
 
-type DstIndexFn = (x: number, y: number, w: number, h: number) => number;
+function hasExifHeader(bytes: Uint8Array, offset: number): boolean {
+  return (
+    bytes[offset] === 0x45 &&
+    bytes[offset + 1] === 0x78 &&
+    bytes[offset + 2] === 0x69 &&
+    bytes[offset + 3] === 0x66 &&
+    bytes[offset + 4] === 0x00 &&
+    bytes[offset + 5] === 0x00
+  );
+}
+
+function readOrientationFromTiff(bytes: Uint8Array, tiffStart: number): number {
+  if (tiffStart + 8 > bytes.length) return 1;
+
+  const byteOrder = (bytes[tiffStart] << 8) | bytes[tiffStart + 1];
+  const le = byteOrder === 0x4949;
+
+  const read16 = (pos: number): number => {
+    if (le) return bytes[pos] | (bytes[pos + 1] << 8);
+    return (bytes[pos] << 8) | bytes[pos + 1];
+  };
+
+  const read32 = (pos: number): number => {
+    if (le)
+      return (
+        bytes[pos] |
+        (bytes[pos + 1] << 8) |
+        (bytes[pos + 2] << 16) |
+        (bytes[pos + 3] << 24)
+      );
+    return (
+      ((bytes[pos] << 24) |
+        (bytes[pos + 1] << 16) |
+        (bytes[pos + 2] << 8) |
+        bytes[pos + 3]) >>>
+      0
+    );
+  };
+
+  const ifdOffset = read32(tiffStart + 4);
+  const ifdStart = tiffStart + ifdOffset;
+  if (ifdStart + 2 > bytes.length) return 1;
+
+  const entryCount = read16(ifdStart);
+  for (let i = 0; i < entryCount; i++) {
+    const entryPos = ifdStart + 2 + i * 12;
+    if (entryPos + 12 > bytes.length) return 1;
+
+    if (read16(entryPos) === 0x0112) {
+      const value = read16(entryPos + 8);
+      return value >= 1 && value <= 8 ? value : 1;
+    }
+  }
+
+  return 1;
+}
 
 function rotate90(
   photon: Photon,
@@ -168,51 +215,4 @@ function rotate90(
   }
 
   return new photon.PhotonImage(dst, h, w);
-}
-
-// Flip orientations mutate in-place. Rotations return a new image (caller must free the old one if different).
-export function applyExifOrientation(
-  photon: Photon,
-  image: PhotonImageType,
-  originalBytes: Uint8Array,
-): PhotonImageType {
-  const orientation = getExifOrientation(originalBytes);
-  if (orientation === 1) return image;
-
-  switch (orientation) {
-    case 2:
-      photon.fliph(image);
-      return image;
-    case 3:
-      photon.fliph(image);
-      photon.flipv(image);
-      return image;
-    case 4:
-      photon.flipv(image);
-      return image;
-    case 5: {
-      const rotated = rotate90(
-        photon,
-        image,
-        (x, y, _w, h) => x * h + (h - 1 - y),
-      );
-      photon.fliph(rotated);
-      return rotated;
-    }
-    case 6:
-      return rotate90(photon, image, (x, y, _w, h) => x * h + (h - 1 - y));
-    case 7: {
-      const rotated = rotate90(
-        photon,
-        image,
-        (x, y, w, h) => (w - 1 - x) * h + y,
-      );
-      photon.fliph(rotated);
-      return rotated;
-    }
-    case 8:
-      return rotate90(photon, image, (x, y, w, h) => (w - 1 - x) * h + y);
-    default:
-      return image;
-  }
 }

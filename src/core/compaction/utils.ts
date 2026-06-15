@@ -2,24 +2,38 @@
  * Shared utilities for compaction and branch summarization.
  */
 
-import type { AgentMessage } from "@shiit/agent-core";
 import type { Message } from "@mariozechner/pi-ai";
+import type { AgentMessage } from "@shiit/agent-core";
 
 // ============================================================================
 // File Operation Tracking
 // ============================================================================
 
 export interface FileOperations {
+  edited: Set<string>;
   read: Set<string>;
   written: Set<string>;
-  edited: Set<string>;
+}
+
+/**
+ * Compute final file lists from file operations.
+ * Returns readFiles (files only read, not modified) and modifiedFiles.
+ */
+export function computeFileLists(fileOps: FileOperations): {
+  modifiedFiles: string[];
+  readFiles: string[];
+} {
+  const modified = new Set([...fileOps.edited, ...fileOps.written]);
+  const readOnly = [...fileOps.read].filter((f) => !modified.has(f)).sort();
+  const modifiedFiles = [...modified].sort();
+  return { modifiedFiles, readFiles: readOnly };
 }
 
 export function createFileOps(): FileOperations {
   return {
+    edited: new Set(),
     read: new Set(),
     written: new Set(),
-    edited: new Set(),
   };
 }
 
@@ -45,31 +59,17 @@ export function extractFileOpsFromMessage(
     if (!path) continue;
 
     switch (block.name) {
+      case "edit":
+        fileOps.edited.add(path);
+        break;
       case "read":
         fileOps.read.add(path);
         break;
       case "write":
         fileOps.written.add(path);
         break;
-      case "edit":
-        fileOps.edited.add(path);
-        break;
     }
   }
-}
-
-/**
- * Compute final file lists from file operations.
- * Returns readFiles (files only read, not modified) and modifiedFiles.
- */
-export function computeFileLists(fileOps: FileOperations): {
-  readFiles: string[];
-  modifiedFiles: string[];
-} {
-  const modified = new Set([...fileOps.edited, ...fileOps.written]);
-  const readOnly = [...fileOps.read].filter((f) => !modified.has(f)).sort();
-  const modifiedFiles = [...modified].sort();
-  return { readFiles: readOnly, modifiedFiles };
 }
 
 /**
@@ -100,16 +100,6 @@ export function formatFileOperations(
 const TOOL_RESULT_MAX_CHARS = 2000;
 
 /**
- * Truncate text to a maximum character length for summarization.
- * Keeps the beginning and appends a truncation marker.
- */
-function truncateForSummary(text: string, maxChars: number): string {
-  if (text.length <= maxChars) return text;
-  const truncatedChars = text.length - maxChars;
-  return `${text.slice(0, maxChars)}\n\n[... ${truncatedChars} more characters truncated]`;
-}
-
-/**
  * Serialize LLM messages to text for summarization.
  * This prevents the model from treating it as a conversation to continue.
  * Call convertToLlm() first to handle custom message types.
@@ -127,7 +117,7 @@ export function serializeConversation(messages: Message[]): string {
           ? msg.content
           : msg.content
               .filter(
-                (c): c is { type: "text"; text: string } => c.type === "text",
+                (c): c is { text: string; type: "text"; } => c.type === "text",
               )
               .map((c) => c.text)
               .join("");
@@ -162,7 +152,7 @@ export function serializeConversation(messages: Message[]): string {
       }
     } else if (msg.role === "toolResult") {
       const content = msg.content
-        .filter((c): c is { type: "text"; text: string } => c.type === "text")
+        .filter((c): c is { text: string; type: "text"; } => c.type === "text")
         .map((c) => c.text)
         .join("");
       if (content) {
@@ -174,6 +164,16 @@ export function serializeConversation(messages: Message[]): string {
   }
 
   return parts.join("\n\n");
+}
+
+/**
+ * Truncate text to a maximum character length for summarization.
+ * Keeps the beginning and appends a truncation marker.
+ */
+function truncateForSummary(text: string, maxChars: number): string {
+  if (text.length <= maxChars) return text;
+  const truncatedChars = text.length - maxChars;
+  return `${text.slice(0, maxChars)}\n\n[... ${truncatedChars} more characters truncated]`;
 }
 
 // ============================================================================

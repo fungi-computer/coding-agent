@@ -10,10 +10,10 @@ import type {
 } from "./agent-session-server-types.js";
 
 export interface Connection {
-  send(message: ServerMessage): void;
-  onMessage(handler: (message: ClientMessage) => void): void;
-  onClose(handler: () => void): void;
   close(): void;
+  onClose(handler: () => void): void;
+  onMessage(handler: (message: ClientMessage) => void): void;
+  send(message: ServerMessage): void;
 }
 
 export interface Transport {

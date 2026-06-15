@@ -3,28 +3,29 @@
  */
 
 import { spawn } from "node:child_process";
+
 import { waitForChildProcess } from "../utils/child-process.js";
 
 /**
  * Options for executing shell commands.
  */
 export interface ExecOptions {
+  /** Working directory */
+  cwd?: string;
   /** AbortSignal to cancel the command */
   signal?: AbortSignal;
   /** Timeout in milliseconds */
   timeout?: number;
-  /** Working directory */
-  cwd?: string;
 }
 
 /**
  * Result of executing a shell command.
  */
 export interface ExecResult {
-  stdout: string;
-  stderr: string;
   code: number;
   killed: boolean;
+  stderr: string;
+  stdout: string;
 }
 
 /**
@@ -94,14 +95,14 @@ export async function execCommand(
         if (options?.signal) {
           options.signal.removeEventListener("abort", killProcess);
         }
-        resolve({ stdout, stderr, code: code ?? 0, killed });
+        resolve({ code: code ?? 0, killed, stderr, stdout });
       })
       .catch((_err) => {
         if (timeoutId) clearTimeout(timeoutId);
         if (options?.signal) {
           options.signal.removeEventListener("abort", killProcess);
         }
-        resolve({ stdout, stderr, code: 1, killed });
+        resolve({ code: 1, killed, stderr, stdout });
       });
   });
 }

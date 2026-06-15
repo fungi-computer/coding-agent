@@ -6,22 +6,22 @@ import { getDocsPath, getExamplesPath, getReadmePath } from "../config.js";
 import { formatSkillsForPrompt, type Skill } from "./skills.js";
 
 export interface BuildSystemPromptOptions {
-  /** Custom system prompt (replaces default). */
-  customPrompt?: string;
-  /** Tools to include in prompt. Default: [read, bash, edit, write] */
-  selectedTools?: string[];
-  /** Optional one-line tool snippets keyed by tool name. */
-  toolSnippets?: Record<string, string>;
-  /** Additional guideline bullets appended to the default system prompt guidelines. */
-  promptGuidelines?: string[];
   /** Text to append to system prompt. */
   appendSystemPrompt?: string;
+  /** Pre-loaded context files. */
+  contextFiles?: { content: string; path: string; }[];
+  /** Custom system prompt (replaces default). */
+  customPrompt?: string;
   /** Working directory. Default: process.cwd() */
   cwd?: string;
-  /** Pre-loaded context files. */
-  contextFiles?: Array<{ path: string; content: string }>;
+  /** Additional guideline bullets appended to the default system prompt guidelines. */
+  promptGuidelines?: string[];
+  /** Tools to include in prompt. Default: [read, bash, edit, write] */
+  selectedTools?: string[];
   /** Pre-loaded skills. */
   skills?: Skill[];
+  /** Optional one-line tool snippets keyed by tool name. */
+  toolSnippets?: Record<string, string>;
 }
 
 /** Build the system prompt with tools, guidelines, and context */
@@ -29,14 +29,14 @@ export function buildSystemPrompt(
   options: BuildSystemPromptOptions = {},
 ): string {
   const {
-    customPrompt,
-    selectedTools,
-    toolSnippets,
-    promptGuidelines,
     appendSystemPrompt,
-    cwd,
     contextFiles: providedContextFiles,
+    customPrompt,
+    cwd,
+    promptGuidelines,
+    selectedTools,
     skills: providedSkills,
+    toolSnippets,
   } = options;
   const resolvedCwd = cwd ?? process.cwd();
   const promptCwd = resolvedCwd.replace(/\\/g, "/");
@@ -59,7 +59,7 @@ export function buildSystemPrompt(
     if (contextFiles.length > 0) {
       prompt += "\n\n# Project Context\n\n";
       prompt += "Project-specific instructions and guidelines:\n\n";
-      for (const { path: filePath, content } of contextFiles) {
+      for (const { content, path: filePath } of contextFiles) {
         prompt += `## ${filePath}\n\n${content}\n\n`;
       }
     }
@@ -159,7 +159,7 @@ Pi documentation (read only when the user asks about pi itself, its SDK, extensi
   if (contextFiles.length > 0) {
     prompt += "\n\n# Project Context\n\n";
     prompt += "Project-specific instructions and guidelines:\n\n";
-    for (const { path: filePath, content } of contextFiles) {
+    for (const { content, path: filePath } of contextFiles) {
       prompt += `## ${filePath}\n\n${content}\n\n`;
     }
   }

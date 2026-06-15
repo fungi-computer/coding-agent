@@ -5,40 +5,41 @@
  */
 
 import type { AgentMessage } from "@shiit/agent-core";
+
 import type { SessionEntry } from "./session-manager.js";
 
-export interface SessionListItem {
-  id: string;
-  name?: string;
-  cwd: string;
+export interface SessionData {
   createdAt: number;
+  cwd: string;
+  entries: SessionEntry[];
+  leafId: null | string;
+  messages: AgentMessage[];
   modifiedAt: number;
-  messageCount: number;
+  name?: string;
+  sessionId: string;
 }
 
-export interface SessionData {
-  sessionId: string;
-  cwd: string;
-  name?: string;
+export interface SessionListItem {
   createdAt: number;
+  cwd: string;
+  id: string;
+  messageCount: number;
   modifiedAt: number;
-  leafId: string | null;
-  entries: SessionEntry[];
-  messages: AgentMessage[];
+  name?: string;
 }
 
 export interface SessionStore {
-  createSession(cwd: string): Promise<{ sessionId: string }>;
-  getSession(sessionId: string): Promise<SessionData | null>;
-  deleteSession(sessionId: string): Promise<void>;
-  listSessions(): Promise<SessionListItem[]>;
-  renameSession(sessionId: string, name: string): Promise<void>;
-
   appendEntry(sessionId: string, entry: SessionEntry): Promise<void>;
+  appendMessage(sessionId: string, message: AgentMessage): Promise<void>;
+  createSession(cwd: string): Promise<{ sessionId: string }>;
+  deleteSession(sessionId: string): Promise<void>;
   getEntries(sessionId: string): Promise<SessionEntry[]>;
 
-  appendMessage(sessionId: string, message: AgentMessage): Promise<void>;
   getMessages(sessionId: string): Promise<AgentMessage[]>;
+  getSession(sessionId: string): Promise<null | SessionData>;
+
+  listSessions(): Promise<SessionListItem[]>;
+  renameSession(sessionId: string, name: string): Promise<void>;
 
   setLeaf(sessionId: string, leafId: string): Promise<void>;
 }

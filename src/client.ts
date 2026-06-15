@@ -9,12 +9,11 @@ export {
   AgentSessionClient,
   type ClientTransport,
 } from "./core/agent-session-client.js";
-export { WebSocketClientTransport } from "./core/websocket-client-transport.js";
 export type {
   AgentSessionSyncEvent,
   ClientMessage,
-  ServerMessage,
   GlobalServerEvent,
+  ServerMessage,
   SessionCommand,
   SessionFactory,
   SessionListItem,
@@ -22,7 +21,8 @@ export type {
 } from "./core/agent-session-server-types.js";
 export type { SessionStore } from "./core/session-store.js";
 export {
-  Transport,
   type Connection,
+  Transport,
   type TransportFactory,
 } from "./core/transport.js";
+export { WebSocketClientTransport } from "./core/websocket-client-transport.js";

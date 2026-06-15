@@ -2,16 +2,53 @@
  * InMemoryTransport - For testing AgentSessionServer without network.
  */
 
-import type { Connection, Transport } from "./transport.js";
 import type {
   ClientMessage,
   ServerMessage,
 } from "./agent-session-server-types.js";
+import type { Connection, Transport } from "./transport.js";
+
+export class InMemoryConnection implements Connection {
+  private closeHandlers = new Set<() => void>();
+  private messageHandlers = new Set<(message: ClientMessage) => void>();
+  private messages: ClientMessage[] = [];
+  private open = true;
+
+  close(): void {
+    this.open = false;
+    this.closeHandlers.forEach((h) => h());
+  }
+
+  getReceivedMessages(): ServerMessage[] {
+    return this.messages as unknown as ServerMessage[];
+  }
+
+  onClose(handler: () => void): void {
+    this.closeHandlers.add(handler);
+  }
+
+  onMessage(handler: (message: ClientMessage) => void): void {
+    this.messageHandlers.add(handler);
+    for (const msg of this.messages) {
+      handler(msg);
+    }
+    this.messages = [];
+  }
+
+  send(message: ServerMessage): void {
+    if (!this.open) return;
+    this.messages.push(message as any);
+  }
+
+  simulateMessage(msg: ClientMessage): void {
+    this.messageHandlers.forEach((h) => h(msg));
+  }
+}
 
 export class InMemoryTransport implements Transport {
-  private connections: InMemoryConnection[] = [];
   private acceptHandler: ((conn: Connection) => void) | null = null;
   private closed = false;
+  private connections: InMemoryConnection[] = [];
 
   async acceptConnection(): Promise<Connection> {
     if (this.closed) {
@@ -33,42 +70,5 @@ export class InMemoryTransport implements Transport {
 
   onAccept(handler: (conn: Connection) => void): void {
     this.acceptHandler = handler;
-  }
-}
-
-export class InMemoryConnection implements Connection {
-  private messageHandlers: Set<(message: ClientMessage) => void> = new Set();
-  private closeHandlers: Set<() => void> = new Set();
-  private messages: ClientMessage[] = [];
-  private open = true;
-
-  send(message: ServerMessage): void {
-    if (!this.open) return;
-    this.messages.push(message as any);
-  }
-
-  onMessage(handler: (message: ClientMessage) => void): void {
-    this.messageHandlers.add(handler);
-    for (const msg of this.messages) {
-      handler(msg);
-    }
-    this.messages = [];
-  }
-
-  onClose(handler: () => void): void {
-    this.closeHandlers.add(handler);
-  }
-
-  close(): void {
-    this.open = false;
-    this.closeHandlers.forEach((h) => h());
-  }
-
-  simulateMessage(msg: ClientMessage): void {
-    this.messageHandlers.forEach((h) => h(msg));
-  }
-
-  getReceivedMessages(): ServerMessage[] {
-    return this.messages as unknown as ServerMessage[];
   }
 }

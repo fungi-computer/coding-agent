@@ -1,51 +1,11 @@
+import { spawn, spawnSync } from "child_process";
 import { existsSync } from "node:fs";
 import { delimiter } from "node:path";
-import { spawn, spawnSync } from "child_process";
+
 import { getBinDir, getSettingsPath } from "../config.js";
 import { SettingsManager } from "../core/settings-manager.js";
 
-let cachedShellConfig: { shell: string; args: string[] } | null = null;
-
-/**
- * Find bash executable on PATH (cross-platform)
- */
-function findBashOnPath(): string | null {
-  if (process.platform === "win32") {
-    // Windows: Use 'where' and verify file exists (where can return non-existent paths)
-    try {
-      const result = spawnSync("where", ["bash.exe"], {
-        encoding: "utf-8",
-        timeout: 5000,
-      });
-      if (result.status === 0 && result.stdout) {
-        const firstMatch = result.stdout.trim().split(/\r?\n/)[0];
-        if (firstMatch && existsSync(firstMatch)) {
-          return firstMatch;
-        }
-      }
-    } catch {
-      // Ignore errors
-    }
-    return null;
-  }
-
-  // Unix: Use 'which' and trust its output (handles Termux and special filesystems)
-  try {
-    const result = spawnSync("which", ["bash"], {
-      encoding: "utf-8",
-      timeout: 5000,
-    });
-    if (result.status === 0 && result.stdout) {
-      const firstMatch = result.stdout.trim().split(/\r?\n/)[0];
-      if (firstMatch) {
-        return firstMatch;
-      }
-    }
-  } catch {
-    // Ignore errors
-  }
-  return null;
-}
+let cachedShellConfig: { args: string[]; shell: string; } | null = null;
 
 /**
  * Get shell configuration based on platform.
@@ -54,7 +14,7 @@ function findBashOnPath(): string | null {
  * 2. On Windows: Git Bash in known locations, then bash on PATH
  * 3. On Unix: /bin/bash, then bash on PATH, then fallback to sh
  */
-export function getShellConfig(): { shell: string; args: string[] } {
+export function getShellConfig(): { args: string[]; shell: string; } {
   if (cachedShellConfig) {
     return cachedShellConfig;
   }
@@ -65,7 +25,7 @@ export function getShellConfig(): { shell: string; args: string[] } {
   // 1. Check user-specified shell path
   if (customShellPath) {
     if (existsSync(customShellPath)) {
-      cachedShellConfig = { shell: customShellPath, args: ["-c"] };
+      cachedShellConfig = { args: ["-c"], shell: customShellPath };
       return cachedShellConfig;
     }
     throw new Error(
@@ -87,7 +47,7 @@ export function getShellConfig(): { shell: string; args: string[] } {
 
     for (const path of paths) {
       if (existsSync(path)) {
-        cachedShellConfig = { shell: path, args: ["-c"] };
+        cachedShellConfig = { args: ["-c"], shell: path };
         return cachedShellConfig;
       }
     }
@@ -95,7 +55,7 @@ export function getShellConfig(): { shell: string; args: string[] } {
     // 3. Fallback: search bash.exe on PATH (Cygwin, MSYS2, WSL, etc.)
     const bashOnPath = findBashOnPath();
     if (bashOnPath) {
-      cachedShellConfig = { shell: bashOnPath, args: ["-c"] };
+      cachedShellConfig = { args: ["-c"], shell: bashOnPath };
       return cachedShellConfig;
     }
 
@@ -110,17 +70,17 @@ export function getShellConfig(): { shell: string; args: string[] } {
 
   // Unix: try /bin/bash, then bash on PATH, then fallback to sh
   if (existsSync("/bin/bash")) {
-    cachedShellConfig = { shell: "/bin/bash", args: ["-c"] };
+    cachedShellConfig = { args: ["-c"], shell: "/bin/bash" };
     return cachedShellConfig;
   }
 
   const bashOnPath = findBashOnPath();
   if (bashOnPath) {
-    cachedShellConfig = { shell: bashOnPath, args: ["-c"] };
+    cachedShellConfig = { args: ["-c"], shell: bashOnPath };
     return cachedShellConfig;
   }
 
-  cachedShellConfig = { shell: "sh", args: ["-c"] };
+  cachedShellConfig = { args: ["-c"], shell: "sh" };
   return cachedShellConfig;
 }
 
@@ -140,6 +100,35 @@ export function getShellEnv(): NodeJS.ProcessEnv {
     ...process.env,
     [pathKey]: updatedPath,
   };
+}
+
+/**
+ * Kill a process and all its children (cross-platform)
+ */
+export function killProcessTree(pid: number): void {
+  if (process.platform === "win32") {
+    // Use taskkill on Windows to kill process tree
+    try {
+      spawn("taskkill", ["/F", "/T", "/PID", String(pid)], {
+        detached: true,
+        stdio: "ignore",
+      });
+    } catch {
+      // Ignore errors if taskkill fails
+    }
+  } else {
+    // Use SIGKILL on Unix/Linux/Mac
+    try {
+      process.kill(-pid, "SIGKILL");
+    } catch {
+      // Fallback to killing just the child if process group kill fails
+      try {
+        process.kill(pid, "SIGKILL");
+      } catch {
+        // Process already dead
+      }
+    }
+  }
 }
 
 /**
@@ -183,30 +172,42 @@ export function sanitizeBinaryOutput(str: string): string {
 }
 
 /**
- * Kill a process and all its children (cross-platform)
+ * Find bash executable on PATH (cross-platform)
  */
-export function killProcessTree(pid: number): void {
+function findBashOnPath(): null | string {
   if (process.platform === "win32") {
-    // Use taskkill on Windows to kill process tree
+    // Windows: Use 'where' and verify file exists (where can return non-existent paths)
     try {
-      spawn("taskkill", ["/F", "/T", "/PID", String(pid)], {
-        stdio: "ignore",
-        detached: true,
+      const result = spawnSync("where", ["bash.exe"], {
+        encoding: "utf-8",
+        timeout: 5000,
       });
+      if (result.status === 0 && result.stdout) {
+        const firstMatch = result.stdout.trim().split(/\r?\n/)[0];
+        if (firstMatch && existsSync(firstMatch)) {
+          return firstMatch;
+        }
+      }
     } catch {
-      // Ignore errors if taskkill fails
+      // Ignore errors
     }
-  } else {
-    // Use SIGKILL on Unix/Linux/Mac
-    try {
-      process.kill(-pid, "SIGKILL");
-    } catch {
-      // Fallback to killing just the child if process group kill fails
-      try {
-        process.kill(pid, "SIGKILL");
-      } catch {
-        // Process already dead
+    return null;
+  }
+
+  // Unix: Use 'which' and trust its output (handles Termux and special filesystems)
+  try {
+    const result = spawnSync("which", ["bash"], {
+      encoding: "utf-8",
+      timeout: 5000,
+    });
+    if (result.status === 0 && result.stdout) {
+      const firstMatch = result.stdout.trim().split(/\r?\n/)[0];
+      if (firstMatch) {
+        return firstMatch;
       }
     }
+  } catch {
+    // Ignore errors
   }
+  return null;
 }

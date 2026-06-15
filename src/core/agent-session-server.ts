@@ -4,33 +4,62 @@
  * This class is transport-agnostic and uses interfaces for persistence and tool execution.
  */
 
-import type { ThinkingLevel } from "@shiit/agent-core";
 import type { Model } from "@mariozechner/pi-ai";
-import type { AgentSession } from "./agent-session.js";
-import type { SessionStore, SessionListItem } from "./session-store.js";
+import type { ThinkingLevel } from "@shiit/agent-core";
+
 import type {
-  SessionSnapshot,
   SessionFactory,
+  SessionSnapshot,
 } from "./agent-session-server-types.js";
-import type { Transport, Connection } from "./transport.js";
-import type { ModelRegistry } from "./model-registry.js";
 import type {
   AgentSessionSyncEvent,
   GlobalServerEvent,
   SessionCommand,
 } from "./agent-session-server-types.js";
+import type { AgentSession } from "./agent-session.js";
+import type { ModelRegistry } from "./model-registry.js";
+import type { SessionListItem, SessionStore } from "./session-store.js";
+import type { Connection, Transport } from "./transport.js";
+
+export interface SessionHandle {
+  abort(): void;
+  readonly activeToolNames: readonly string[];
+  compact(reason?: "manual" | "overflow" | "threshold"): Promise<void>;
+  readonly cwd: string;
+  dispose(): void;
+  readonly isStreaming: boolean;
+  readonly leafId: null | string;
+  readonly model?: Model<any>;
+
+  navigateTree(leafId: string, label?: string): Promise<void>;
+  prompt(text: string): Promise<void>;
+  readonly sessionId: string;
+  readonly sessionName?: string;
+  setActiveToolsByName(toolNames: string[]): void;
+  setModel(modelId: string, provider?: string): Promise<void>;
+  setThinkingLevel(level: ThinkingLevel): void;
+  subscribe(listener: (event: any) => void): () => void;
+  readonly thinkingLevel: ThinkingLevel;
+}
+
+interface SessionState {
+  connections: Set<Connection>;
+  session: AgentSession;
+  subscribers: Set<(event: AgentSessionSyncEvent) => void>;
+}
 
 export class AgentSessionServer {
-  private readonly _sessionStore: SessionStore;
-  private readonly _sessionFactory: SessionFactory;
+  private readonly _globalSubscribers = new Set<
+    (event: GlobalServerEvent) => void
+  >();
   private readonly _modelRegistry: ModelRegistry;
-  private readonly _transport: Transport;
-
-  private readonly _sessions: Map<string, SessionState> = new Map();
-  private readonly _globalSubscribers: Set<(event: GlobalServerEvent) => void> =
-    new Set();
-  private _sequenceId = 0;
   private _running = false;
+  private _sequenceId = 0;
+
+  private readonly _sessionFactory: SessionFactory;
+  private readonly _sessions = new Map<string, SessionState>();
+  private readonly _sessionStore: SessionStore;
+  private readonly _transport: Transport;
 
   constructor(
     sessionStore: SessionStore,
@@ -44,27 +73,47 @@ export class AgentSessionServer {
     this._transport = transport;
   }
 
-  getTransport(): Transport {
-    return this._transport;
-  }
-
-  async start(): Promise<void> {
-    if (this._running) return;
-    this._running = true;
-    this._emitGlobal({ type: "server_connected" });
-  }
-
-  async stop(): Promise<void> {
-    if (!this._running) return;
-    this._running = false;
-
-    for (const [, state] of this._sessions) {
-      state.session?.dispose();
+  async command(sessionId: string, cmd: SessionCommand): Promise<void> {
+    let state = this._sessions.get(sessionId);
+    if (!state) {
+      await this.joinSession(sessionId);
+      state = this._sessions.get(sessionId);
     }
-    this._sessions.clear();
+    if (!state) {
+      throw new Error(`Session not found: ${sessionId}`);
+    }
 
-    this._emitGlobal({ type: "server_shutdown" });
-    await this._transport.close();
+    switch (cmd.type) {
+      case "abort":
+        state.session.abort();
+        break;
+      case "compact":
+        await state.session.compact(cmd.reason);
+        break;
+      case "navigate_tree":
+        await state.session.navigateTree(cmd.leafId);
+        break;
+      case "prompt":
+        await state.session.prompt(cmd.text);
+        break;
+      case "set_model": {
+        const resolvedModel = this._modelRegistry.find(
+          cmd.provider ?? "",
+          cmd.modelId,
+        );
+        if (!resolvedModel) {
+          throw new Error(`Model not found: ${cmd.provider}/${cmd.modelId}`);
+        }
+        await state.session.setModel(resolvedModel);
+        break;
+      }
+      case "set_thinking_level":
+        state.session.setThinkingLevel(cmd.level);
+        break;
+      case "set_tools":
+        state.session.setActiveToolsByName(cmd.toolNames);
+        break;
+    }
   }
 
   async createSession(
@@ -73,13 +122,13 @@ export class AgentSessionServer {
     const { sessionId } = await this._sessionStore.createSession(cwd);
 
     const session = await this._sessionFactory.createSession({
-      sessionId,
       cwd,
+      sessionId,
     });
 
     const state: SessionState = {
-      session,
       connections: new Set(),
+      session,
       subscribers: new Set(),
     };
     this._sessions.set(sessionId, state);
@@ -92,21 +141,35 @@ export class AgentSessionServer {
 
     const data = await this._sessionStore.getSession(sessionId);
     this._emitGlobal({
-      type: "session_created",
-      sessionId,
       info: data
         ? this._toListItem(data)
         : {
-            id: sessionId,
-            cwd,
             createdAt: Date.now(),
-            modifiedAt: Date.now(),
+            cwd,
+            id: sessionId,
             messageCount: 0,
+            modifiedAt: Date.now(),
           },
+      sessionId,
+      type: "session_created",
     });
 
     const snapshot = await this._buildSnapshot(sessionId);
     return { sessionId, snapshot };
+  }
+
+  async deleteSession(sessionId: string): Promise<void> {
+    await this.leaveSession(sessionId);
+    await this._sessionStore.deleteSession(sessionId);
+    this._emitGlobal({ sessionId, type: "session_deleted" });
+  }
+
+  getSession(sessionId: string): AgentSession | undefined {
+    return this._sessions.get(sessionId)?.session;
+  }
+
+  getTransport(): Transport {
+    return this._transport;
   }
 
   async joinSession(sessionId: string): Promise<SessionSnapshot> {
@@ -118,13 +181,13 @@ export class AgentSessionServer {
       }
 
       const session = await this._sessionFactory.createSession({
-        sessionId,
         cwd: data.cwd,
+        sessionId,
       });
 
       const newState: SessionState = {
-        session,
         connections: new Set(),
+        session,
         subscribers: new Set(),
       };
       this._sessions.set(sessionId, newState);
@@ -150,62 +213,39 @@ export class AgentSessionServer {
     }
   }
 
-  async deleteSession(sessionId: string): Promise<void> {
-    await this.leaveSession(sessionId);
-    await this._sessionStore.deleteSession(sessionId);
-    this._emitGlobal({ type: "session_deleted", sessionId });
-  }
-
   async listSessions(): Promise<SessionListItem[]> {
     return this._sessionStore.listSessions();
   }
 
   async renameSession(sessionId: string, name: string): Promise<void> {
     await this._sessionStore.renameSession(sessionId, name);
-    this._emitGlobal({ type: "session_renamed", sessionId, name });
+    this._emitGlobal({ name, sessionId, type: "session_renamed" });
   }
 
-  async command(sessionId: string, cmd: SessionCommand): Promise<void> {
-    let state = this._sessions.get(sessionId);
-    if (!state) {
-      await this.joinSession(sessionId);
-      state = this._sessions.get(sessionId);
-    }
-    if (!state) {
-      throw new Error(`Session not found: ${sessionId}`);
-    }
+  async start(): Promise<void> {
+    if (this._running) return;
+    this._running = true;
+    this._emitGlobal({ type: "server_connected" });
+  }
 
-    switch (cmd.type) {
-      case "prompt":
-        await state.session.prompt(cmd.text);
-        break;
-      case "abort":
-        state.session.abort();
-        break;
-      case "set_model": {
-        const resolvedModel = this._modelRegistry.find(
-          cmd.provider ?? "",
-          cmd.modelId,
-        );
-        if (!resolvedModel) {
-          throw new Error(`Model not found: ${cmd.provider}/${cmd.modelId}`);
-        }
-        await state.session.setModel(resolvedModel);
-        break;
-      }
-      case "set_thinking_level":
-        state.session.setThinkingLevel(cmd.level);
-        break;
-      case "set_tools":
-        state.session.setActiveToolsByName(cmd.toolNames);
-        break;
-      case "navigate_tree":
-        await state.session.navigateTree(cmd.leafId);
-        break;
-      case "compact":
-        await state.session.compact(cmd.reason);
-        break;
+  async stop(): Promise<void> {
+    if (!this._running) return;
+    this._running = false;
+
+    for (const [, state] of this._sessions) {
+      state.session?.dispose();
     }
+    this._sessions.clear();
+
+    this._emitGlobal({ type: "server_shutdown" });
+    await this._transport.close();
+  }
+
+  subscribeGlobal(listener: (event: GlobalServerEvent) => void): () => void {
+    this._globalSubscribers.add(listener);
+    return () => {
+      this._globalSubscribers.delete(listener);
+    };
   }
 
   subscribeSession(
@@ -223,44 +263,36 @@ export class AgentSessionServer {
     };
   }
 
-  subscribeGlobal(listener: (event: GlobalServerEvent) => void): () => void {
-    this._globalSubscribers.add(listener);
-    return () => {
-      this._globalSubscribers.delete(listener);
-    };
-  }
-
-  getSession(sessionId: string): AgentSession | undefined {
-    return this._sessions.get(sessionId)?.session;
-  }
-
   private async _buildSnapshot(sessionId: string): Promise<SessionSnapshot> {
-    const storeData = await this._sessionStore.getSession(sessionId);
     const session = this._sessions.get(sessionId)?.session;
+    const manager = session?.sessionManager;
 
     return {
-      sessionId,
-      cwd: storeData?.cwd ?? session?.sessionManager?.getCwd() ?? "",
-      leafId: storeData?.leafId ?? session?.sessionManager?.getLeafId() ?? null,
-      branchEntries: storeData?.entries ?? [],
-      thinkingLevel: session?.thinkingLevel ?? "medium",
-      availableThinkingLevels: ["off", "low", "medium", "high"],
       activeToolNames: session?.getActiveToolNames() ?? [],
-      queue: { steering: [], followUp: [] },
       agent: {
         isStreaming: session?.isStreaming ?? false,
         pendingToolCalls: [],
       },
+      availableThinkingLevels: ["off", "low", "medium", "high"],
+      branchEntries: manager?.getEntries() ?? [],
+      contextUsage: session?.getContextUsage(),
+      cost: session?.getSessionStats()?.cost,
+      cwd: manager?.getCwd() ?? "",
+      leafId: manager?.getLeafId() ?? null,
+      model: session?.model,
+      queue: { followUp: [], steering: [] },
       resources: {
-        extensions: [],
         extensionErrors: [],
-        skills: [],
-        skillDiagnostics: [],
-        prompts: [],
+        extensions: [],
         promptDiagnostics: [],
-        themes: [],
+        prompts: [],
+        skillDiagnostics: [],
+        skills: [],
         themeDiagnostics: [],
+        themes: [],
       },
+      sessionId,
+      thinkingLevel: session?.thinkingLevel ?? "medium",
     };
   }
 
@@ -270,39 +302,12 @@ export class AgentSessionServer {
 
   private _toListItem(data: any): SessionListItem {
     return {
-      id: data.sessionId,
-      name: data.name,
-      cwd: data.cwd,
       createdAt: data.createdAt,
-      modifiedAt: data.modifiedAt,
+      cwd: data.cwd,
+      id: data.sessionId,
       messageCount: data.messages?.length ?? 0,
+      modifiedAt: data.modifiedAt,
+      name: data.name,
     };
   }
-}
-
-interface SessionState {
-  session: AgentSession;
-  connections: Set<Connection>;
-  subscribers: Set<(event: AgentSessionSyncEvent) => void>;
-}
-
-export interface SessionHandle {
-  readonly sessionId: string;
-  readonly cwd: string;
-  readonly model?: Model<any>;
-  readonly thinkingLevel: ThinkingLevel;
-  readonly isStreaming: boolean;
-  readonly sessionName?: string;
-  readonly leafId: string | null;
-  readonly activeToolNames: readonly string[];
-
-  prompt(text: string): Promise<void>;
-  abort(): void;
-  setModel(modelId: string, provider?: string): Promise<void>;
-  setThinkingLevel(level: ThinkingLevel): void;
-  setActiveToolsByName(toolNames: string[]): void;
-  navigateTree(leafId: string, label?: string): Promise<void>;
-  compact(reason?: "manual" | "threshold" | "overflow"): Promise<void>;
-  subscribe(listener: (event: any) => void): () => void;
-  dispose(): void;
 }

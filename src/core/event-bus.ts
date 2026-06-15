@@ -9,8 +9,8 @@ export interface EventBusController extends EventBus {
 
 export function createEventBus(): EventBusController {
   return {
+    clear: () => {},
     emit: () => {},
     on: () => () => {},
-    clear: () => {},
   };
 }

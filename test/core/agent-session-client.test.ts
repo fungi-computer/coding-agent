@@ -1,18 +1,19 @@
-import { describe, test, expect, vi } from "vitest";
+import { describe, expect, test, vi } from "vitest";
+
 import { AgentSessionClient } from "../../src/core/agent-session-client.js";
 
 const createTransport = () => {
-  const handlers: Set<(msg: any) => void> = new Set();
+  const handlers = new Set<(msg: any) => void>();
 
   return {
-    handlers,
     connect: vi.fn().mockResolvedValue(undefined),
     disconnect: vi.fn().mockResolvedValue(undefined),
-    send: vi.fn(),
+    handlers,
+    onClose: vi.fn(),
     onMessage: vi.fn((handler: (msg: any) => void) => {
       handlers.add(handler);
     }),
-    onClose: vi.fn(),
+    send: vi.fn(),
     simulateMessage: (msg: any) => {
       for (const handler of handlers) {
         handler(msg);
@@ -21,26 +22,26 @@ const createTransport = () => {
   };
 };
 
-const testSnapshot = (overrides?: { sessionId?: string; cwd?: string }) => ({
-  sessionId: overrides?.sessionId ?? "test-session",
+const testSnapshot = (overrides?: { cwd?: string; sessionId?: string; }) => ({
+  activeToolNames: ["read", "bash"] as const,
+  agent: { isStreaming: false, pendingToolCalls: [] },
+  availableThinkingLevels: ["off", "low", "medium", "high"] as const,
+  branchEntries: [],
   cwd: overrides?.cwd ?? "/",
   leafId: "leaf-1",
-  branchEntries: [],
-  thinkingLevel: "medium" as const,
-  availableThinkingLevels: ["off", "low", "medium", "high"] as const,
-  activeToolNames: ["read", "bash"] as const,
-  queue: { steering: [] as const, followUp: [] as const },
-  agent: { isStreaming: false, pendingToolCalls: [] },
+  queue: { followUp: [] as const, steering: [] as const },
   resources: {
-    extensions: [],
     extensionErrors: [],
-    skills: [],
-    skillDiagnostics: [],
-    prompts: [],
+    extensions: [],
     promptDiagnostics: [],
-    themes: [],
+    prompts: [],
+    skillDiagnostics: [],
+    skills: [],
     themeDiagnostics: [],
+    themes: [],
   },
+  sessionId: overrides?.sessionId ?? "test-session",
+  thinkingLevel: "medium" as const,
 });
 
 describe("AgentSessionClient", () => {
@@ -62,9 +63,9 @@ describe("AgentSessionClient", () => {
 
       const joinPromise = client.joinSession("test-session");
       transport.simulateMessage({
-        type: "snapshot",
-        sessionId: "test-session",
         data: testSnapshot({ sessionId: "test-session" }),
+        sessionId: "test-session",
+        type: "snapshot",
       });
 
       const snapshot = await joinPromise;
@@ -79,9 +80,9 @@ describe("AgentSessionClient", () => {
       // Start join but DON'T await - message comes after
       const joinPromise = client.joinSession("test-session");
       transport.simulateMessage({
-        type: "snapshot",
+        data: testSnapshot({ cwd: "/home", sessionId: "test-session" }),
         sessionId: "test-session",
-        data: testSnapshot({ sessionId: "test-session", cwd: "/home" }),
+        type: "snapshot",
       });
       await joinPromise;
 
@@ -110,19 +111,19 @@ describe("AgentSessionClient", () => {
       // Join first (don't await, message comes after)
       const joinPromise = client.joinSession("test-session");
       transport.simulateMessage({
-        type: "snapshot",
-        sessionId: "test-session",
         data: testSnapshot(),
+        sessionId: "test-session",
+        type: "snapshot",
       });
       await joinPromise;
 
       // Send command
-      await client.command("test-session", { type: "prompt", text: "hello" });
+      await client.command("test-session", { text: "hello", type: "prompt" });
 
       expect(transport.send).toHaveBeenCalledWith({
-        type: "command",
+        command: { text: "hello", type: "prompt" },
         sessionId: "test-session",
-        command: { type: "prompt", text: "hello" },
+        type: "command",
       });
     });
   });
@@ -136,9 +137,9 @@ describe("AgentSessionClient", () => {
       // Join session (don't await, message comes after)
       const joinPromise = client.joinSession("test-session");
       transport.simulateMessage({
-        type: "snapshot",
-        sessionId: "test-session",
         data: testSnapshot(),
+        sessionId: "test-session",
+        type: "snapshot",
       });
       await joinPromise;
 
@@ -148,14 +149,14 @@ describe("AgentSessionClient", () => {
 
       // Receive events
       transport.simulateMessage({
-        type: "event",
-        sessionId: "test-session",
         event: { type: "agent_start" },
+        sessionId: "test-session",
+        type: "event",
       });
       transport.simulateMessage({
-        type: "event",
+        event: { turnIndex: 0, type: "turn_start" },
         sessionId: "test-session",
-        event: { type: "turn_start", turnIndex: 0 },
+        type: "event",
       });
 
       expect(received).toHaveLength(2);
@@ -170,9 +171,9 @@ describe("AgentSessionClient", () => {
 
       const joinPromise = client.joinSession("test-session");
       transport.simulateMessage({
-        type: "snapshot",
-        sessionId: "test-session",
         data: testSnapshot(),
+        sessionId: "test-session",
+        type: "snapshot",
       });
       await joinPromise;
 
@@ -182,18 +183,18 @@ describe("AgentSessionClient", () => {
       );
 
       transport.simulateMessage({
-        type: "event",
-        sessionId: "test-session",
         event: { type: "agent_start" },
+        sessionId: "test-session",
+        type: "event",
       });
       expect(received).toHaveLength(1);
 
       unsubscribe();
 
       transport.simulateMessage({
-        type: "event",
-        sessionId: "test-session",
         event: { type: "agent_end" },
+        sessionId: "test-session",
+        type: "event",
       });
       expect(received).toHaveLength(1); // Still 1, not 2
     });
@@ -207,17 +208,17 @@ describe("AgentSessionClient", () => {
 
       const listPromise = client.listSessions();
       transport.simulateMessage({
-        type: "session_list",
         sessions: [
-          { id: "s1", cwd: "/", createdAt: 0, modifiedAt: 0, messageCount: 0 },
+          { createdAt: 0, cwd: "/", id: "s1", messageCount: 0, modifiedAt: 0 },
           {
-            id: "s2",
-            cwd: "/home",
             createdAt: 0,
-            modifiedAt: 0,
+            cwd: "/home",
+            id: "s2",
             messageCount: 5,
+            modifiedAt: 0,
           },
         ],
+        type: "session_list",
       });
 
       const sessions = await listPromise;
@@ -235,9 +236,9 @@ describe("AgentSessionClient", () => {
 
       const createPromise = client.createSession("/workspace");
       transport.simulateMessage({
-        type: "snapshot",
+        data: testSnapshot({ cwd: "/workspace", sessionId: "new-session" }),
         sessionId: "new-session",
-        data: testSnapshot({ sessionId: "new-session", cwd: "/workspace" }),
+        type: "snapshot",
       });
 
       const result = await createPromise;
@@ -255,8 +256,8 @@ describe("AgentSessionClient", () => {
       await client.deleteSession("test-session");
 
       expect(transport.send).toHaveBeenCalledWith({
-        type: "delete_session",
         sessionId: "test-session",
+        type: "delete_session",
       });
     });
   });
@@ -270,8 +271,8 @@ describe("AgentSessionClient", () => {
       await client.leaveSession("test-session");
 
       expect(transport.send).toHaveBeenCalledWith({
-        type: "leave_session",
         sessionId: "test-session",
+        type: "leave_session",
       });
     });
   });
@@ -289,19 +290,19 @@ describe("AgentSessionClient", () => {
         type: "server_connected",
       });
       transport.simulateMessage({
-        type: "session_created",
-        sessionId: "new-session",
         info: {
-          id: "new-session",
-          cwd: "/",
           createdAt: 0,
-          modifiedAt: 0,
+          cwd: "/",
+          id: "new-session",
           messageCount: 0,
+          modifiedAt: 0,
         },
+        sessionId: "new-session",
+        type: "session_created",
       });
       transport.simulateMessage({
-        type: "session_deleted",
         sessionId: "old-session",
+        type: "session_deleted",
       });
 
       expect(received).toHaveLength(3);
@@ -327,15 +328,15 @@ describe("AgentSessionClient", () => {
       unsubscribe();
 
       transport.simulateMessage({
-        type: "session_created",
-        sessionId: "new-session",
         info: {
-          id: "new-session",
-          cwd: "/",
           createdAt: 0,
-          modifiedAt: 0,
+          cwd: "/",
+          id: "new-session",
           messageCount: 0,
+          modifiedAt: 0,
         },
+        sessionId: "new-session",
+        type: "session_created",
       });
       expect(received).toHaveLength(1); // Still 1, not 2
     });

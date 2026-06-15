@@ -1,4 +1,4 @@
-import { type ExecFileException, execFile, spawnSync } from "child_process";
+import { execFile, type ExecFileException, spawnSync } from "child_process";
 import {
   existsSync,
   type FSWatcher,
@@ -10,85 +10,19 @@ import {
 } from "fs";
 import { dirname, join, resolve } from "path";
 
-type GitPaths = {
-  repoDir: string;
+/** Read-only view for extensions - excludes setExtensionStatus, setAvailableProviderCount and dispose */
+export type ReadonlyFooterDataProvider = Pick<
+  FooterDataProvider,
+  | "getAvailableProviderCount"
+  | "getExtensionStatuses"
+  | "getGitBranch"
+  | "onBranchChange"
+>;
+
+interface GitPaths {
   commonGitDir: string;
   headPath: string;
-};
-
-/**
- * Find git metadata paths by walking up from cwd.
- * Handles both regular git repos (.git is a directory) and worktrees (.git is a file).
- */
-function findGitPaths(cwd: string): GitPaths | null {
-  let dir = cwd;
-  while (true) {
-    const gitPath = join(dir, ".git");
-    if (existsSync(gitPath)) {
-      try {
-        const stat = statSync(gitPath);
-        if (stat.isFile()) {
-          const content = readFileSync(gitPath, "utf8").trim();
-          if (content.startsWith("gitdir: ")) {
-            const gitDir = resolve(dir, content.slice(8).trim());
-            const headPath = join(gitDir, "HEAD");
-            if (!existsSync(headPath)) return null;
-            const commonDirPath = join(gitDir, "commondir");
-            const commonGitDir = existsSync(commonDirPath)
-              ? resolve(gitDir, readFileSync(commonDirPath, "utf8").trim())
-              : gitDir;
-            return { repoDir: dir, commonGitDir, headPath };
-          }
-        } else if (stat.isDirectory()) {
-          const headPath = join(gitPath, "HEAD");
-          if (!existsSync(headPath)) return null;
-          return { repoDir: dir, commonGitDir: gitPath, headPath };
-        }
-      } catch {
-        return null;
-      }
-    }
-    const parent = dirname(dir);
-    if (parent === dir) return null;
-    dir = parent;
-  }
-}
-
-/** Ask git for the current branch. Returns null on detached HEAD or if git is unavailable. */
-function resolveBranchWithGitSync(repoDir: string): string | null {
-  const result = spawnSync(
-    "git",
-    ["--no-optional-locks", "symbolic-ref", "--quiet", "--short", "HEAD"],
-    {
-      cwd: repoDir,
-      encoding: "utf8",
-      stdio: ["ignore", "pipe", "ignore"],
-    },
-  );
-  const branch = result.status === 0 ? result.stdout.trim() : "";
-  return branch || null;
-}
-
-/** Ask git for the current branch asynchronously. Returns null on detached HEAD or if git is unavailable. */
-function resolveBranchWithGitAsync(repoDir: string): Promise<string | null> {
-  return new Promise((resolvePromise) => {
-    execFile(
-      "git",
-      ["--no-optional-locks", "symbolic-ref", "--quiet", "--short", "HEAD"],
-      {
-        cwd: repoDir,
-        encoding: "utf8",
-      },
-      (error: ExecFileException | null, stdout: string) => {
-        if (error) {
-          resolvePromise(null);
-          return;
-        }
-        const branch = stdout.trim();
-        resolvePromise(branch || null);
-      },
-    );
-  });
+  repoDir: string;
 }
 
 /**
@@ -96,22 +30,22 @@ function resolveBranchWithGitAsync(repoDir: string): Promise<string | null> {
  * Token stats, model info available via ctx.sessionManager and ctx.model.
  */
 export class FooterDataProvider {
-  private cwd: string;
   private static readonly WATCH_DEBOUNCE_MS = 500;
+  private availableProviderCount = 0;
 
+  private branchChangeCallbacks = new Set<() => void>();
+  private cachedBranch: null | string | undefined = undefined;
+  private cwd: string;
+  private disposed = false;
   private extensionStatuses = new Map<string, string>();
-  private cachedBranch: string | null | undefined = undefined;
   private gitPaths: GitPaths | null | undefined = undefined;
   private headWatcher: FSWatcher | null = null;
-  private reftableWatcher: FSWatcher | null = null;
-  private reftableTablesListWatcher: FSWatcher | null = null;
-  private reftableTablesListPath: string | null = null;
-  private branchChangeCallbacks = new Set<() => void>();
-  private availableProviderCount = 0;
-  private refreshTimer: ReturnType<typeof setTimeout> | null = null;
   private refreshInFlight = false;
   private refreshPending = false;
-  private disposed = false;
+  private refreshTimer: null | ReturnType<typeof setTimeout> = null;
+  private reftableTablesListPath: null | string = null;
+  private reftableTablesListWatcher: FSWatcher | null = null;
+  private reftableWatcher: FSWatcher | null = null;
 
   constructor(cwd: string = process.cwd()) {
     this.cwd = cwd;
@@ -119,12 +53,40 @@ export class FooterDataProvider {
     this.setupGitWatcher();
   }
 
-  /** Current git branch, null if not in repo, "detached" if detached HEAD */
-  getGitBranch(): string | null {
-    if (this.cachedBranch === undefined) {
-      this.cachedBranch = this.resolveGitBranchSync();
+  /** Internal: clear extension statuses */
+  clearExtensionStatuses(): void {
+    this.extensionStatuses.clear();
+  }
+
+  /** Internal: cleanup */
+  dispose(): void {
+    this.disposed = true;
+    if (this.refreshTimer) {
+      clearTimeout(this.refreshTimer);
+      this.refreshTimer = null;
     }
-    return this.cachedBranch;
+    if (this.headWatcher) {
+      this.headWatcher.close();
+      this.headWatcher = null;
+    }
+    if (this.reftableWatcher) {
+      this.reftableWatcher.close();
+      this.reftableWatcher = null;
+    }
+    if (this.reftableTablesListWatcher) {
+      this.reftableTablesListWatcher.close();
+      this.reftableTablesListWatcher = null;
+    }
+    if (this.reftableTablesListPath) {
+      unwatchFile(this.reftableTablesListPath);
+      this.reftableTablesListPath = null;
+    }
+    this.branchChangeCallbacks.clear();
+  }
+
+  /** Number of unique providers with available models (for footer display) */
+  getAvailableProviderCount(): number {
+    return this.availableProviderCount;
   }
 
   /** Extension status texts set via ctx.ui.setStatus() */
@@ -132,29 +94,18 @@ export class FooterDataProvider {
     return this.extensionStatuses;
   }
 
+  /** Current git branch, null if not in repo, "detached" if detached HEAD */
+  getGitBranch(): null | string {
+    if (this.cachedBranch === undefined) {
+      this.cachedBranch = this.resolveGitBranchSync();
+    }
+    return this.cachedBranch;
+  }
+
   /** Subscribe to git branch changes. Returns unsubscribe function. */
   onBranchChange(callback: () => void): () => void {
     this.branchChangeCallbacks.add(callback);
     return () => this.branchChangeCallbacks.delete(callback);
-  }
-
-  /** Internal: set extension status */
-  setExtensionStatus(key: string, text: string | undefined): void {
-    if (text === undefined) {
-      this.extensionStatuses.delete(key);
-    } else {
-      this.extensionStatuses.set(key, text);
-    }
-  }
-
-  /** Internal: clear extension statuses */
-  clearExtensionStatuses(): void {
-    this.extensionStatuses.clear();
-  }
-
-  /** Number of unique providers with available models (for footer display) */
-  getAvailableProviderCount(): number {
-    return this.availableProviderCount;
   }
 
   /** Internal: update available provider count */
@@ -194,46 +145,17 @@ export class FooterDataProvider {
     this.notifyBranchChange();
   }
 
-  /** Internal: cleanup */
-  dispose(): void {
-    this.disposed = true;
-    if (this.refreshTimer) {
-      clearTimeout(this.refreshTimer);
-      this.refreshTimer = null;
+  /** Internal: set extension status */
+  setExtensionStatus(key: string, text: string | undefined): void {
+    if (text === undefined) {
+      this.extensionStatuses.delete(key);
+    } else {
+      this.extensionStatuses.set(key, text);
     }
-    if (this.headWatcher) {
-      this.headWatcher.close();
-      this.headWatcher = null;
-    }
-    if (this.reftableWatcher) {
-      this.reftableWatcher.close();
-      this.reftableWatcher = null;
-    }
-    if (this.reftableTablesListWatcher) {
-      this.reftableTablesListWatcher.close();
-      this.reftableTablesListWatcher = null;
-    }
-    if (this.reftableTablesListPath) {
-      unwatchFile(this.reftableTablesListPath);
-      this.reftableTablesListPath = null;
-    }
-    this.branchChangeCallbacks.clear();
   }
 
   private notifyBranchChange(): void {
     for (const cb of this.branchChangeCallbacks) cb();
-  }
-
-  private scheduleRefresh(): void {
-    if (this.disposed || this.refreshTimer) return;
-    if (this.refreshInFlight) {
-      this.refreshPending = true;
-      return;
-    }
-    this.refreshTimer = setTimeout(() => {
-      this.refreshTimer = null;
-      void this.refreshGitBranchAsync();
-    }, FooterDataProvider.WATCH_DEBOUNCE_MS);
   }
 
   private async refreshGitBranchAsync(): Promise<void> {
@@ -262,7 +184,24 @@ export class FooterDataProvider {
     }
   }
 
-  private resolveGitBranchSync(): string | null {
+  private async resolveGitBranchAsync(): Promise<null | string> {
+    try {
+      if (!this.gitPaths) return null;
+      const content = readFileSync(this.gitPaths.headPath, "utf8").trim();
+      if (content.startsWith("ref: refs/heads/")) {
+        const branch = content.slice(16);
+        return branch === ".invalid"
+          ? ((await resolveBranchWithGitAsync(this.gitPaths.repoDir)) ??
+              "detached")
+          : branch;
+      }
+      return "detached";
+    } catch {
+      return null;
+    }
+  }
+
+  private resolveGitBranchSync(): null | string {
     try {
       if (!this.gitPaths) return null;
       const content = readFileSync(this.gitPaths.headPath, "utf8").trim();
@@ -278,21 +217,16 @@ export class FooterDataProvider {
     }
   }
 
-  private async resolveGitBranchAsync(): Promise<string | null> {
-    try {
-      if (!this.gitPaths) return null;
-      const content = readFileSync(this.gitPaths.headPath, "utf8").trim();
-      if (content.startsWith("ref: refs/heads/")) {
-        const branch = content.slice(16);
-        return branch === ".invalid"
-          ? ((await resolveBranchWithGitAsync(this.gitPaths.repoDir)) ??
-              "detached")
-          : branch;
-      }
-      return "detached";
-    } catch {
-      return null;
+  private scheduleRefresh(): void {
+    if (this.disposed || this.refreshTimer) return;
+    if (this.refreshInFlight) {
+      this.refreshPending = true;
+      return;
     }
+    this.refreshTimer = setTimeout(() => {
+      this.refreshTimer = null;
+      void this.refreshGitBranchAsync();
+    }, FooterDataProvider.WATCH_DEBOUNCE_MS);
   }
 
   private setupGitWatcher(): void {
@@ -350,11 +284,77 @@ export class FooterDataProvider {
   }
 }
 
-/** Read-only view for extensions - excludes setExtensionStatus, setAvailableProviderCount and dispose */
-export type ReadonlyFooterDataProvider = Pick<
-  FooterDataProvider,
-  | "getGitBranch"
-  | "getExtensionStatuses"
-  | "getAvailableProviderCount"
-  | "onBranchChange"
->;
+/**
+ * Find git metadata paths by walking up from cwd.
+ * Handles both regular git repos (.git is a directory) and worktrees (.git is a file).
+ */
+function findGitPaths(cwd: string): GitPaths | null {
+  let dir = cwd;
+  while (true) {
+    const gitPath = join(dir, ".git");
+    if (existsSync(gitPath)) {
+      try {
+        const stat = statSync(gitPath);
+        if (stat.isFile()) {
+          const content = readFileSync(gitPath, "utf8").trim();
+          if (content.startsWith("gitdir: ")) {
+            const gitDir = resolve(dir, content.slice(8).trim());
+            const headPath = join(gitDir, "HEAD");
+            if (!existsSync(headPath)) return null;
+            const commonDirPath = join(gitDir, "commondir");
+            const commonGitDir = existsSync(commonDirPath)
+              ? resolve(gitDir, readFileSync(commonDirPath, "utf8").trim())
+              : gitDir;
+            return { commonGitDir, headPath, repoDir: dir };
+          }
+        } else if (stat.isDirectory()) {
+          const headPath = join(gitPath, "HEAD");
+          if (!existsSync(headPath)) return null;
+          return { commonGitDir: gitPath, headPath, repoDir: dir };
+        }
+      } catch {
+        return null;
+      }
+    }
+    const parent = dirname(dir);
+    if (parent === dir) return null;
+    dir = parent;
+  }
+}
+
+/** Ask git for the current branch asynchronously. Returns null on detached HEAD or if git is unavailable. */
+function resolveBranchWithGitAsync(repoDir: string): Promise<null | string> {
+  return new Promise((resolvePromise) => {
+    execFile(
+      "git",
+      ["--no-optional-locks", "symbolic-ref", "--quiet", "--short", "HEAD"],
+      {
+        cwd: repoDir,
+        encoding: "utf8",
+      },
+      (error: ExecFileException | null, stdout: string) => {
+        if (error) {
+          resolvePromise(null);
+          return;
+        }
+        const branch = stdout.trim();
+        resolvePromise(branch || null);
+      },
+    );
+  });
+}
+
+/** Ask git for the current branch. Returns null on detached HEAD or if git is unavailable. */
+function resolveBranchWithGitSync(repoDir: string): null | string {
+  const result = spawnSync(
+    "git",
+    ["--no-optional-locks", "symbolic-ref", "--quiet", "--short", "HEAD"],
+    {
+      cwd: repoDir,
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "ignore"],
+    },
+  );
+  const branch = result.status === 0 ? result.stdout.trim() : "";
+  return branch || null;
+}

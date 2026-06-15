@@ -7,21 +7,21 @@
 import type { ClientTransport } from "./agent-session-client.js";
 
 export interface WebSocketClientTransportOptions {
-  url: string;
-  subprotocol?: string;
   onDebug?: (message: string) => void;
+  subprotocol?: string;
+  url: string;
 }
 
 export class WebSocketClientTransport implements ClientTransport {
-  private ws: WebSocket | null = null;
-  private messageHandlers = new Set<(message: any) => void>();
-  private closeHandlers = new Set<() => void>();
-  private connectResolver: (() => void) | null = null;
-  private connectRejecter: ((err: Error) => void) | null = null;
   private closed = false;
-  private readonly url: string;
-  private readonly subprotocol?: string;
+  private closeHandlers = new Set<() => void>();
+  private connectRejecter: ((err: Error) => void) | null = null;
+  private connectResolver: (() => void) | null = null;
+  private messageHandlers = new Set<(message: any) => void>();
   private readonly onDebug?: (message: string) => void;
+  private readonly subprotocol?: string;
+  private readonly url: string;
+  private ws: null | WebSocket = null;
 
   constructor(options: WebSocketClientTransportOptions) {
     this.url = options.url;
@@ -65,7 +65,15 @@ export class WebSocketClientTransport implements ClientTransport {
     this.cleanup();
   }
 
-  send(message: { type: string; [key: string]: any }): void {
+  onClose(handler: () => void): void {
+    this.closeHandlers.add(handler);
+  }
+
+  onMessage(handler: (message: any) => void): void {
+    this.messageHandlers.add(handler);
+  }
+
+  send(message: { [key: string]: any; type: string; }): void {
     if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
       this.debug(
         `Cannot send - WebSocket not open. State: ${this.ws?.readyState}`,
@@ -81,35 +89,21 @@ export class WebSocketClientTransport implements ClientTransport {
     }
   }
 
-  onMessage(handler: (message: any) => void): void {
-    this.messageHandlers.add(handler);
+  private cleanup(): void {
+    if (this.ws) {
+      this.ws.removeEventListener("open", this.handleOpen);
+      this.ws.removeEventListener("message", this.handleMessage);
+      this.ws.removeEventListener("close", this.handleClose);
+      this.ws.removeEventListener("error", this.handleError);
+      this.ws = null;
+    }
   }
 
-  onClose(handler: () => void): void {
-    this.closeHandlers.add(handler);
+  private debug(message: string): void {
+    if (this.onDebug) {
+      this.onDebug(message);
+    }
   }
-
-  private handleOpen = (): void => {
-    this.debug("WebSocket connected");
-    if (this.connectResolver) {
-      this.connectResolver();
-      this.connectResolver = null;
-      this.connectRejecter = null;
-    }
-  };
-
-  private handleMessage = (event: MessageEvent): void => {
-    try {
-      const data =
-        typeof event.data === "string"
-          ? JSON.parse(event.data)
-          : JSON.parse(new TextDecoder().decode(event.data));
-      this.debug(`Received: ${JSON.stringify(data)}`);
-      this.messageHandlers.forEach((h) => h(data));
-    } catch (err) {
-      this.debug(`Failed to parse message: ${err}`);
-    }
-  };
 
   private handleClose = (event: CloseEvent): void => {
     this.debug(`WebSocket closed: ${event.code} ${event.reason}`);
@@ -127,19 +121,25 @@ export class WebSocketClientTransport implements ClientTransport {
     this.cleanup();
   };
 
-  private cleanup(): void {
-    if (this.ws) {
-      this.ws.removeEventListener("open", this.handleOpen);
-      this.ws.removeEventListener("message", this.handleMessage);
-      this.ws.removeEventListener("close", this.handleClose);
-      this.ws.removeEventListener("error", this.handleError);
-      this.ws = null;
+  private handleMessage = (event: MessageEvent): void => {
+    try {
+      const data =
+        typeof event.data === "string"
+          ? JSON.parse(event.data)
+          : JSON.parse(new TextDecoder().decode(event.data));
+      this.debug(`Received: ${JSON.stringify(data)}`);
+      this.messageHandlers.forEach((h) => h(data));
+    } catch (err) {
+      this.debug(`Failed to parse message: ${err}`);
     }
-  }
+  };
 
-  private debug(message: string): void {
-    if (this.onDebug) {
-      this.onDebug(message);
+  private handleOpen = (): void => {
+    this.debug("WebSocket connected");
+    if (this.connectResolver) {
+      this.connectResolver();
+      this.connectResolver = null;
+      this.connectRejecter = null;
     }
-  }
+  };
 }

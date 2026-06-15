@@ -1,17 +1,20 @@
-import { join } from "node:path";
-import type { ThinkingLevel } from "@shiit/agent-core";
 import type { Model, SimpleStreamOptions } from "@mariozechner/pi-ai";
+import type { ThinkingLevel } from "@shiit/agent-core";
+
+import { join } from "node:path";
+
+import type { SessionStartEvent, ToolDefinition } from "./extensions/index.js";
+import type { SessionManager } from "./session-manager.js";
+
 import { getAgentDir } from "../config.js";
 import { AuthStorage } from "./auth-storage.js";
-import type { SessionStartEvent, ToolDefinition } from "./extensions/index.js";
 import { ModelRegistry } from "./model-registry.js";
 import {
   DefaultResourceLoader,
   type DefaultResourceLoaderOptions,
   type ResourceLoader,
 } from "./resource-loader.js";
-import { type CreateAgentSessionResult, createAgentSession } from "./sdk.js";
-import type { SessionManager } from "./session-manager.js";
+import { createAgentSession, type CreateAgentSessionResult } from "./sdk.js";
 import { SettingsManager } from "./settings-manager.js";
 
 /**
@@ -22,8 +25,41 @@ import { SettingsManager } from "./settings-manager.js";
  * errors should abort startup.
  */
 export interface AgentSessionRuntimeDiagnostic {
-  type: "info" | "warning" | "error";
   message: string;
+  type: "error" | "info" | "warning";
+}
+
+/**
+ * Coherent cwd-bound runtime services for one effective session cwd.
+ *
+ * This is infrastructure only. The AgentSession itself is created separately so
+ * session options can be resolved against these services first.
+ */
+export interface AgentSessionServices {
+  agentDir: string;
+  authStorage: AuthStorage;
+  cwd: string;
+  diagnostics: AgentSessionRuntimeDiagnostic[];
+  modelRegistry: ModelRegistry;
+  resourceLoader: ResourceLoader;
+  settingsManager: SettingsManager;
+}
+
+/**
+ * Inputs for creating an AgentSession from already-created services.
+ *
+ * Use this after services exist and any cwd-bound model/tool/session options
+ * have been resolved against those services.
+ */
+export interface CreateAgentSessionFromServicesOptions {
+  model?: Model<any>;
+  onPayload?: SimpleStreamOptions["onPayload"];
+  scopedModels?: { model: Model<any>; thinkingLevel?: ThinkingLevel }[];
+  services: AgentSessionServices;
+  sessionManager: SessionManager;
+  sessionStartEvent?: SessionStartEvent;
+  thinkingLevel?: ThinkingLevel;
+  tools?: ToolDefinition[];
 }
 
 /**
@@ -34,49 +70,98 @@ export interface AgentSessionRuntimeDiagnostic {
  * reach this function, so later cwd switches do not reinterpret them.
  */
 export interface CreateAgentSessionServicesOptions {
-  cwd: string;
   agentDir?: string;
   authStorage?: AuthStorage;
-  settingsManager?: SettingsManager;
-  modelRegistry?: ModelRegistry;
+  cwd: string;
   extensionFlagValues?: Map<string, boolean | string>;
+  modelRegistry?: ModelRegistry;
   resourceLoaderOptions?: Omit<
     DefaultResourceLoaderOptions,
-    "cwd" | "agentDir" | "settingsManager"
+    "agentDir" | "cwd" | "settingsManager"
   >;
+  settingsManager?: SettingsManager;
 }
 
 /**
- * Inputs for creating an AgentSession from already-created services.
+ * Create an AgentSession from previously created services.
  *
- * Use this after services exist and any cwd-bound model/tool/session options
- * have been resolved against those services.
+ * This keeps session creation separate from service creation so callers can
+ * resolve model, thinking, tools, and other session inputs against the target
+ * cwd before constructing the session.
  */
-export interface CreateAgentSessionFromServicesOptions {
-  services: AgentSessionServices;
-  sessionManager: SessionManager;
-  sessionStartEvent?: SessionStartEvent;
-  model?: Model<any>;
-  thinkingLevel?: ThinkingLevel;
-  scopedModels?: Array<{ model: Model<any>; thinkingLevel?: ThinkingLevel }>;
-  tools?: ToolDefinition[];
-  onPayload?: SimpleStreamOptions["onPayload"];
+export async function createAgentSessionFromServices(
+  options: CreateAgentSessionFromServicesOptions,
+): Promise<CreateAgentSessionResult> {
+  return createAgentSession({
+    agentDir: options.services.agentDir,
+    authStorage: options.services.authStorage,
+    cwd: options.services.cwd,
+    model: options.model,
+    modelRegistry: options.services.modelRegistry,
+    onPayload: options.onPayload,
+    resourceLoader: options.services.resourceLoader,
+    scopedModels: options.scopedModels,
+    sessionManager: options.sessionManager,
+    sessionStartEvent: options.sessionStartEvent,
+    settingsManager: options.services.settingsManager,
+    thinkingLevel: options.thinkingLevel,
+    tools: options.tools,
+  });
 }
 
 /**
- * Coherent cwd-bound runtime services for one effective session cwd.
+ * Create cwd-bound runtime services.
  *
- * This is infrastructure only. The AgentSession itself is created separately so
- * session options can be resolved against these services first.
+ * Returns services plus diagnostics. It does not create an AgentSession.
  */
-export interface AgentSessionServices {
-  cwd: string;
-  agentDir: string;
-  authStorage: AuthStorage;
-  settingsManager: SettingsManager;
-  modelRegistry: ModelRegistry;
-  resourceLoader: ResourceLoader;
-  diagnostics: AgentSessionRuntimeDiagnostic[];
+export async function createAgentSessionServices(
+  options: CreateAgentSessionServicesOptions,
+): Promise<AgentSessionServices> {
+  const cwd = options.cwd;
+  const agentDir = options.agentDir ?? getAgentDir();
+  const authStorage =
+    options.authStorage ?? AuthStorage.create(join(agentDir, "auth.json"));
+  const settingsManager =
+    options.settingsManager ?? SettingsManager.create(cwd, agentDir);
+  const modelRegistry =
+    options.modelRegistry ??
+    ModelRegistry.create(authStorage, join(agentDir, "models.json"));
+  const resourceLoader = new DefaultResourceLoader({
+    ...(options.resourceLoaderOptions ?? {}),
+    agentDir,
+    cwd,
+    settingsManager,
+  });
+  await resourceLoader.reload();
+
+  const diagnostics: AgentSessionRuntimeDiagnostic[] = [];
+  const extensionsResult = resourceLoader.getExtensions();
+  for (const { config, extensionPath, name } of extensionsResult.runtime
+    .pendingProviderRegistrations) {
+    try {
+      modelRegistry.registerProvider(name, config);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      diagnostics.push({
+        message: `Extension "${extensionPath}" error: ${message}`,
+        type: "error",
+      });
+    }
+  }
+  extensionsResult.runtime.pendingProviderRegistrations = [];
+  diagnostics.push(
+    ...applyExtensionFlagValues(resourceLoader, options.extensionFlagValues),
+  );
+
+  return {
+    agentDir,
+    authStorage,
+    cwd,
+    diagnostics,
+    modelRegistry,
+    resourceLoader,
+    settingsManager,
+  };
 }
 
 function applyExtensionFlagValues(
@@ -112,99 +197,17 @@ function applyExtensionFlagValues(
       continue;
     }
     diagnostics.push({
-      type: "error",
       message: `Extension flag "--${name}" requires a value`,
+      type: "error",
     });
   }
 
   if (unknownFlags.length > 0) {
     diagnostics.push({
-      type: "error",
       message: `Unknown option${unknownFlags.length === 1 ? "" : "s"}: ${unknownFlags.map((name) => `--${name}`).join(", ")}`,
+      type: "error",
     });
   }
 
   return diagnostics;
-}
-
-/**
- * Create cwd-bound runtime services.
- *
- * Returns services plus diagnostics. It does not create an AgentSession.
- */
-export async function createAgentSessionServices(
-  options: CreateAgentSessionServicesOptions,
-): Promise<AgentSessionServices> {
-  const cwd = options.cwd;
-  const agentDir = options.agentDir ?? getAgentDir();
-  const authStorage =
-    options.authStorage ?? AuthStorage.create(join(agentDir, "auth.json"));
-  const settingsManager =
-    options.settingsManager ?? SettingsManager.create(cwd, agentDir);
-  const modelRegistry =
-    options.modelRegistry ??
-    ModelRegistry.create(authStorage, join(agentDir, "models.json"));
-  const resourceLoader = new DefaultResourceLoader({
-    ...(options.resourceLoaderOptions ?? {}),
-    cwd,
-    agentDir,
-    settingsManager,
-  });
-  await resourceLoader.reload();
-
-  const diagnostics: AgentSessionRuntimeDiagnostic[] = [];
-  const extensionsResult = resourceLoader.getExtensions();
-  for (const { name, config, extensionPath } of extensionsResult.runtime
-    .pendingProviderRegistrations) {
-    try {
-      modelRegistry.registerProvider(name, config);
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      diagnostics.push({
-        type: "error",
-        message: `Extension "${extensionPath}" error: ${message}`,
-      });
-    }
-  }
-  extensionsResult.runtime.pendingProviderRegistrations = [];
-  diagnostics.push(
-    ...applyExtensionFlagValues(resourceLoader, options.extensionFlagValues),
-  );
-
-  return {
-    cwd,
-    agentDir,
-    authStorage,
-    settingsManager,
-    modelRegistry,
-    resourceLoader,
-    diagnostics,
-  };
-}
-
-/**
- * Create an AgentSession from previously created services.
- *
- * This keeps session creation separate from service creation so callers can
- * resolve model, thinking, tools, and other session inputs against the target
- * cwd before constructing the session.
- */
-export async function createAgentSessionFromServices(
-  options: CreateAgentSessionFromServicesOptions,
-): Promise<CreateAgentSessionResult> {
-  return createAgentSession({
-    cwd: options.services.cwd,
-    agentDir: options.services.agentDir,
-    authStorage: options.services.authStorage,
-    settingsManager: options.services.settingsManager,
-    modelRegistry: options.services.modelRegistry,
-    resourceLoader: options.services.resourceLoader,
-    sessionManager: options.sessionManager,
-    model: options.model,
-    thinkingLevel: options.thinkingLevel,
-    scopedModels: options.scopedModels,
-    tools: options.tools,
-    sessionStartEvent: options.sessionStartEvent,
-    onPayload: options.onPayload,
-  });
 }

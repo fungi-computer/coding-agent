@@ -1,83 +1,85 @@
-import { join } from "node:path";
-import {
-  Agent,
-  type AgentMessage,
-  type ThinkingLevel,
-} from "@shiit/agent-core";
 import {
   type Message,
   type Model,
   type SimpleStreamOptions,
   streamSimple,
 } from "@mariozechner/pi-ai";
-import { getAgentDir, getDocsPath } from "../config.js";
 import {
-  AgentSession,
-  type AgentLogger,
-  ConsoleLogger,
-} from "./agent-session.js";
-import { AuthStorage } from "./auth-storage.js";
-import { DEFAULT_THINKING_LEVEL } from "./defaults.js";
+  Agent,
+  type AgentMessage,
+  type ThinkingLevel,
+} from "@shiit/agent-core";
+import { join } from "node:path";
+
 import type {
   ExtensionRunner,
   LoadExtensionsResult,
   SessionStartEvent,
   ToolDefinition,
 } from "./extensions/index.js";
+import type { ResourceLoader } from "./resource-loader.js";
+
+import { getAgentDir, getDocsPath } from "../config.js";
+import {
+  type AgentLogger,
+  AgentSession,
+  ConsoleLogger,
+} from "./agent-session.js";
+import { AuthStorage } from "./auth-storage.js";
+import { DEFAULT_THINKING_LEVEL } from "./defaults.js";
 import { convertToLlm } from "./messages.js";
 import { ModelRegistry } from "./model-registry.js";
 import { findInitialModel } from "./model-resolver.js";
-import type { ResourceLoader } from "./resource-loader.js";
 import { DefaultResourceLoader } from "./resource-loader.js";
 import { getDefaultSessionDir, SessionManager } from "./session-manager.js";
 import { SettingsManager } from "./settings-manager.js";
 import { time } from "./timings.js";
 
 export interface CreateAgentSessionOptions {
-  /** Working directory for project-local discovery. Default: process.cwd() */
-  cwd?: string;
   /** Global config directory. Default: ~/.pi/agent */
   agentDir?: string;
-
   /** Auth storage for credentials. Default: AuthStorage.create(agentDir/auth.json) */
   authStorage?: AuthStorage;
-  /** Model registry. Default: ModelRegistry.create(authStorage, agentDir/models.json) */
-  modelRegistry?: ModelRegistry;
+
+  /** Working directory for project-local discovery. Default: process.cwd() */
+  cwd?: string;
+  /** Logger for observability. Default: ConsoleLogger (logs to console in CF Workers). */
+  logger?: AgentLogger;
 
   /** Model to use. Default: from settings, else first available */
   model?: Model<any>;
-  /** Thinking level. Default: from settings, else 'medium' (clamped to model capabilities) */
-  thinkingLevel?: ThinkingLevel;
-  /** Models available for cycling (Ctrl+P in interactive mode) */
-  scopedModels?: Array<{ model: Model<any>; thinkingLevel?: ThinkingLevel }>;
-
-  /** Tools provided by the environment (file tools, bash, etc.) */
-  tools?: ToolDefinition[];
+  /** Model registry. Default: ModelRegistry.create(authStorage, agentDir/models.json) */
+  modelRegistry?: ModelRegistry;
+  /** Optional callback for inspecting or replacing provider payloads before sending. */
+  onPayload?: SimpleStreamOptions["onPayload"];
 
   /** Resource loader. When omitted, DefaultResourceLoader is used. */
   resourceLoader?: ResourceLoader;
 
+  /** Models available for cycling (Ctrl+P in interactive mode) */
+  scopedModels?: { model: Model<any>; thinkingLevel?: ThinkingLevel }[];
+
   /** Session manager. Default: SessionManager.create(cwd) */
   sessionManager?: SessionManager;
 
-  /** Settings manager. Default: SettingsManager.create(cwd, agentDir) */
-  settingsManager?: SettingsManager;
   /** Session start event metadata for extension runtime startup. */
   sessionStartEvent?: SessionStartEvent;
-  /** Logger for observability. Default: ConsoleLogger (logs to console in CF Workers). */
-  logger?: AgentLogger;
-  /** Optional callback for inspecting or replacing provider payloads before sending. */
-  onPayload?: SimpleStreamOptions["onPayload"];
+  /** Settings manager. Default: SettingsManager.create(cwd, agentDir) */
+  settingsManager?: SettingsManager;
+  /** Thinking level. Default: from settings, else 'medium' (clamped to model capabilities) */
+  thinkingLevel?: ThinkingLevel;
+  /** Tools provided by the environment (file tools, bash, etc.) */
+  tools?: ToolDefinition[];
 }
 
 /** Result from createAgentSession */
 export interface CreateAgentSessionResult {
-  /** The created session */
-  session: AgentSession;
   /** Extensions result (for UI context setup in interactive mode) */
   extensionsResult: LoadExtensionsResult;
   /** Warning if session was restored with a different model than saved */
   modelFallbackMessage?: string;
+  /** The created session */
+  session: AgentSession;
 }
 
 // Re-exports
@@ -96,10 +98,6 @@ export type { PromptTemplate } from "./prompt-templates.js";
 export type { Skill } from "./skills.js";
 
 // Helper Functions
-
-function getDefaultAgentDir(): string {
-  return getAgentDir();
-}
 
 /**
  * Create an AgentSession with the specified options.
@@ -160,8 +158,8 @@ export async function createAgentSession(
 
   if (!resourceLoader) {
     resourceLoader = new DefaultResourceLoader({
-      cwd,
       agentDir,
+      cwd,
       settingsManager,
     });
     await resourceLoader.reload();
@@ -195,12 +193,12 @@ export async function createAgentSession(
   // If still no model, use findInitialModel (checks settings default, then provider defaults)
   if (!model) {
     const result = await findInitialModel({
-      scopedModels: [],
-      isContinuing: hasExistingSession,
-      defaultProvider: settingsManager.getDefaultProvider(),
       defaultModelId: settingsManager.getDefaultModel(),
+      defaultProvider: settingsManager.getDefaultProvider(),
       defaultThinkingLevel: settingsManager.getDefaultThinkingLevel(),
+      isContinuing: hasExistingSession,
       modelRegistry,
+      scopedModels: [],
     });
     model = result.model;
     if (!model) {
@@ -250,8 +248,8 @@ export async function createAgentSession(
               .map((c) =>
                 c.type === "image"
                   ? {
-                      type: "text" as const,
                       text: "Image reading is disabled.",
+                      type: "text" as const,
                     }
                   : c,
               )
@@ -263,7 +261,7 @@ export async function createAgentSession(
                     c.text === "Image reading is disabled." &&
                     i > 0 &&
                     arr[i - 1].type === "text" &&
-                    (arr[i - 1] as { type: "text"; text: string }).text ===
+                    (arr[i - 1] as { text: string; type: "text"; }).text ===
                       "Image reading is disabled."
                   ),
               );
@@ -278,13 +276,28 @@ export async function createAgentSession(
   const extensionRunnerRef: { current?: ExtensionRunner } = {};
 
   agent = new Agent({
+    convertToLlm: convertToLlmWithBlockImages,
+    followUpMode: settingsManager.getFollowUpMode(),
     initialState: {
-      systemPrompt: "",
       model,
+      systemPrompt: "",
       thinkingLevel,
       tools: [],
     },
-    convertToLlm: convertToLlmWithBlockImages,
+    maxRetryDelayMs: settingsManager.getRetrySettings().maxDelayMs,
+    onPayload: async (payload, model) => {
+      let result = payload;
+      if (options.onPayload) {
+        result = (await options.onPayload(result, model)) ?? result;
+      }
+      const runner = extensionRunnerRef.current;
+      if (!runner?.hasHandlers("before_provider_request")) {
+        return result;
+      }
+      return runner.emitBeforeProviderRequest(result);
+    },
+    sessionId: sessionManager.getSessionId(),
+    steeringMode: settingsManager.getSteeringMode(),
     streamFn: async (model, context, options) => {
       const auth = await modelRegistry.getApiKeyAndHeaders(model);
       if (!auth.ok) {
@@ -299,28 +312,13 @@ export async function createAgentSession(
             : undefined,
       });
     },
-    onPayload: async (payload, model) => {
-      let result = payload;
-      if (options.onPayload) {
-        result = (await options.onPayload(result, model)) ?? result;
-      }
-      const runner = extensionRunnerRef.current;
-      if (!runner?.hasHandlers("before_provider_request")) {
-        return result;
-      }
-      return runner.emitBeforeProviderRequest(result);
-    },
-    sessionId: sessionManager.getSessionId(),
+    thinkingBudgets: settingsManager.getThinkingBudgets(),
     transformContext: async (messages) => {
       const runner = extensionRunnerRef.current;
       if (!runner) return messages;
       return runner.emitContext(messages);
     },
-    steeringMode: settingsManager.getSteeringMode(),
-    followUpMode: settingsManager.getFollowUpMode(),
     transport: settingsManager.getTransport(),
-    thinkingBudgets: settingsManager.getThinkingBudgets(),
-    maxRetryDelayMs: settingsManager.getRetrySettings().maxDelayMs,
   });
 
   // Restore messages if session has existing data
@@ -339,22 +337,26 @@ export async function createAgentSession(
 
   const session = new AgentSession({
     agent,
-    sessionManager,
-    settingsManager,
     cwd,
-    scopedModels: options.scopedModels,
-    resourceLoader,
-    tools: options.tools,
-    modelRegistry,
     extensionRunnerRef,
-    sessionStartEvent: options.sessionStartEvent,
     logger: options.logger ?? new ConsoleLogger(),
+    modelRegistry,
+    resourceLoader,
+    scopedModels: options.scopedModels,
+    sessionManager,
+    sessionStartEvent: options.sessionStartEvent,
+    settingsManager,
+    tools: options.tools,
   });
   const extensionsResult = resourceLoader.getExtensions();
 
   return {
-    session,
     extensionsResult,
     modelFallbackMessage,
+    session,
   };
+}
+
+function getDefaultAgentDir(): string {
+  return getAgentDir();
 }

@@ -5,8 +5,8 @@
  * and provides a transformer to convert them to LLM-compatible messages.
  */
 
-import type { AgentMessage } from "@shiit/agent-core";
 import type { ImageContent, Message, TextContent } from "@mariozechner/pi-ai";
+import type { AgentMessage } from "@shiit/agent-core";
 
 export const COMPACTION_SUMMARY_PREFIX = `The conversation history before this point was compacted into the following summary:
 
@@ -23,84 +23,40 @@ export const BRANCH_SUMMARY_PREFIX = `The following is a summary of a branch tha
 
 export const BRANCH_SUMMARY_SUFFIX = `</summary>`;
 
-/**
- * Message type for extension-injected messages via sendMessage().
- * These are custom messages that extensions can inject into the conversation.
- */
-export interface CustomMessage<T = unknown> {
-  role: "custom";
-  customType: string;
-  content: string | (TextContent | ImageContent)[];
-  display: boolean;
-  details?: T;
-  timestamp: number;
-}
-
 export interface BranchSummaryMessage {
+  fromId: string;
   role: "branchSummary";
   summary: string;
-  fromId: string;
   timestamp: number;
 }
 
 export interface CompactionSummaryMessage {
   role: "compactionSummary";
   summary: string;
+  timestamp: number;
   tokensBefore: number;
+}
+
+/**
+ * Message type for extension-injected messages via sendMessage().
+ * These are custom messages that extensions can inject into the conversation.
+ */
+export interface CustomMessage<T = unknown> {
+  content: (ImageContent | TextContent)[] | string;
+  customType: string;
+  details?: T;
+  display: boolean;
+  role: "custom";
   timestamp: number;
 }
 
 // Extend CustomAgentMessages via declaration merging
 declare module "@shiit/agent-core" {
   interface CustomAgentMessages {
-    custom: CustomMessage;
     branchSummary: BranchSummaryMessage;
     compactionSummary: CompactionSummaryMessage;
+    custom: CustomMessage;
   }
-}
-
-export function createBranchSummaryMessage(
-  summary: string,
-  fromId: string,
-  timestamp: string,
-): BranchSummaryMessage {
-  return {
-    role: "branchSummary",
-    summary,
-    fromId,
-    timestamp: new Date(timestamp).getTime(),
-  };
-}
-
-export function createCompactionSummaryMessage(
-  summary: string,
-  tokensBefore: number,
-  timestamp: string,
-): CompactionSummaryMessage {
-  return {
-    role: "compactionSummary",
-    summary: summary,
-    tokensBefore,
-    timestamp: new Date(timestamp).getTime(),
-  };
-}
-
-/** Convert CustomMessageEntry to AgentMessage format */
-export function createCustomMessage(
-  customType: string,
-  content: string | (TextContent | ImageContent)[],
-  display: boolean,
-  details: unknown | undefined,
-  timestamp: string,
-): CustomMessage {
-  return {
-    role: "custom",
-    customType,
-    content,
-    display,
-    details,
-    timestamp: new Date(timestamp).getTime(),
-  };
 }
 
 /**
@@ -115,46 +71,46 @@ export function convertToLlm(messages: AgentMessage[]): Message[] {
   return messages
     .map((m): Message | undefined => {
       switch (m.role) {
-        case "custom": {
-          const content =
-            typeof m.content === "string"
-              ? [{ type: "text" as const, text: m.content }]
-              : m.content;
-          return {
-            role: "user",
-            content,
-            timestamp: m.timestamp,
-          };
-        }
+        case "assistant":
+        case "toolResult":
+        case "user":
+          return m;
         case "branchSummary":
           return {
-            role: "user",
             content: [
               {
-                type: "text" as const,
                 text: BRANCH_SUMMARY_PREFIX + m.summary + BRANCH_SUMMARY_SUFFIX,
+                type: "text" as const,
               },
             ],
+            role: "user",
             timestamp: m.timestamp,
           };
         case "compactionSummary":
           return {
-            role: "user",
             content: [
               {
-                type: "text" as const,
                 text:
                   COMPACTION_SUMMARY_PREFIX +
                   m.summary +
                   COMPACTION_SUMMARY_SUFFIX,
+                type: "text" as const,
               },
             ],
+            role: "user",
             timestamp: m.timestamp,
           };
-        case "user":
-        case "assistant":
-        case "toolResult":
-          return m;
+        case "custom": {
+          const content =
+            typeof m.content === "string"
+              ? [{ text: m.content, type: "text" as const }]
+              : m.content;
+          return {
+            content,
+            role: "user",
+            timestamp: m.timestamp,
+          };
+        }
         default:
           // biome-ignore lint/correctness/noSwitchDeclarations: fine
           const _exhaustiveCheck: never = m;
@@ -162,4 +118,48 @@ export function convertToLlm(messages: AgentMessage[]): Message[] {
       }
     })
     .filter((m) => m !== undefined);
+}
+
+export function createBranchSummaryMessage(
+  summary: string,
+  fromId: string,
+  timestamp: string,
+): BranchSummaryMessage {
+  return {
+    fromId,
+    role: "branchSummary",
+    summary,
+    timestamp: new Date(timestamp).getTime(),
+  };
+}
+
+export function createCompactionSummaryMessage(
+  summary: string,
+  tokensBefore: number,
+  timestamp: string,
+): CompactionSummaryMessage {
+  return {
+    role: "compactionSummary",
+    summary: summary,
+    timestamp: new Date(timestamp).getTime(),
+    tokensBefore,
+  };
+}
+
+/** Convert CustomMessageEntry to AgentMessage format */
+export function createCustomMessage(
+  customType: string,
+  content: (ImageContent | TextContent)[] | string,
+  display: boolean,
+  details: undefined | unknown,
+  timestamp: string,
+): CustomMessage {
+  return {
+    content,
+    customType,
+    details,
+    display,
+    role: "custom",
+    timestamp: new Date(timestamp).getTime(),
+  };
 }

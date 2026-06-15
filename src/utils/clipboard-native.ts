@@ -1,10 +1,10 @@
 import { createRequire } from "module";
 
-export type ClipboardModule = {
-  setText: (text: string) => Promise<void>;
+export interface ClipboardModule {
+  getImageBinary: () => Promise<number[]>;
   hasImage: () => boolean;
-  getImageBinary: () => Promise<Array<number>>;
-};
+  setText: (text: string) => Promise<void>;
+}
 
 const require = (() => {
   try {

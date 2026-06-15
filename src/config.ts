@@ -39,11 +39,11 @@ export const isBunRuntime = !!process.versions.bun;
 
 export type InstallMethod =
   | "bun-binary"
+  | "bun"
   | "npm"
   | "pnpm"
-  | "yarn"
-  | "bun"
-  | "unknown";
+  | "unknown"
+  | "yarn";
 
 export function detectInstallMethod(): InstallMethod {
   if (isBunBinary) {
@@ -80,27 +80,59 @@ export function detectInstallMethod(): InstallMethod {
   return "unknown";
 }
 
-export function getUpdateInstruction(packageName: string): string {
-  const method = detectInstallMethod();
-  switch (method) {
-    case "bun-binary":
-      return `Download from: https://github.com/badlogic/pi-mono/releases/latest`;
-    case "pnpm":
-      return `Run: pnpm install -g ${packageName}`;
-    case "yarn":
-      return `Run: yarn global add ${packageName}`;
-    case "bun":
-      return `Run: bun install -g ${packageName}`;
-    case "npm":
-      return `Run: npm install -g ${packageName}`;
-    default:
-      return `Run: npm install -g ${packageName}`;
-  }
+/** Get path to a bundled interactive asset */
+export function getBundledInteractiveAssetPath(name: string): string {
+  return join(getInteractiveAssetsDir(), name);
 }
 
 // =============================================================================
 // Package Asset Paths (shipped with executable)
 // =============================================================================
+
+/** Get path to CHANGELOG.md */
+export function getChangelogPath(): string {
+  return resolve(join(getPackageDir(), "CHANGELOG.md"));
+}
+
+/** Get path to docs directory */
+export function getDocsPath(): string {
+  return resolve(join(getPackageDir(), "docs"));
+}
+
+/** Get path to examples directory */
+export function getExamplesPath(): string {
+  return resolve(join(getPackageDir(), "examples"));
+}
+
+/**
+ * Get path to HTML export template directory (shipped with package)
+ * - For Bun binary: export-html/ next to executable
+ * - For Node.js (dist/): dist/core/export-html/
+ * - For tsx (src/): src/core/export-html/
+ */
+export function getExportTemplateDir(): string {
+  if (isBunBinary) {
+    return join(dirname(process.execPath), "export-html");
+  }
+  const packageDir = getPackageDir();
+  const srcOrDist = existsSync(join(packageDir, "src")) ? "src" : "dist";
+  return join(packageDir, srcOrDist, "core", "export-html");
+}
+
+/**
+ * Get path to built-in interactive assets directory.
+ * - For Bun binary: assets/ next to executable
+ * - For Node.js (dist/): dist/modes/interactive/assets/
+ * - For tsx (src/): src/modes/interactive/assets/
+ */
+export function getInteractiveAssetsDir(): string {
+  if (isBunBinary) {
+    return join(dirname(process.execPath), "assets");
+  }
+  const packageDir = getPackageDir();
+  const srcOrDist = existsSync(join(packageDir, "src")) ? "src" : "dist";
+  return join(packageDir, srcOrDist, "modes", "interactive", "assets");
+}
 
 /**
  * Get the base directory for resolving package assets (themes, package.json, README.md, CHANGELOG.md).
@@ -133,6 +165,16 @@ export function getPackageDir(): string {
   return __dirname;
 }
 
+/** Get path to package.json */
+export function getPackageJsonPath(): string {
+  return join(getPackageDir(), "package.json");
+}
+
+/** Get path to README.md */
+export function getReadmePath(): string {
+  return resolve(join(getPackageDir(), "README.md"));
+}
+
 /**
  * Get path to built-in themes directory (shipped with package)
  * - For Bun binary: theme/ next to executable
@@ -149,64 +191,22 @@ export function getThemesDir(): string {
   return join(packageDir, srcOrDist, "modes", "interactive", "theme");
 }
 
-/**
- * Get path to HTML export template directory (shipped with package)
- * - For Bun binary: export-html/ next to executable
- * - For Node.js (dist/): dist/core/export-html/
- * - For tsx (src/): src/core/export-html/
- */
-export function getExportTemplateDir(): string {
-  if (isBunBinary) {
-    return join(dirname(process.execPath), "export-html");
+export function getUpdateInstruction(packageName: string): string {
+  const method = detectInstallMethod();
+  switch (method) {
+    case "bun":
+      return `Run: bun install -g ${packageName}`;
+    case "bun-binary":
+      return `Download from: https://github.com/badlogic/pi-mono/releases/latest`;
+    case "npm":
+      return `Run: npm install -g ${packageName}`;
+    case "pnpm":
+      return `Run: pnpm install -g ${packageName}`;
+    case "yarn":
+      return `Run: yarn global add ${packageName}`;
+    default:
+      return `Run: npm install -g ${packageName}`;
   }
-  const packageDir = getPackageDir();
-  const srcOrDist = existsSync(join(packageDir, "src")) ? "src" : "dist";
-  return join(packageDir, srcOrDist, "core", "export-html");
-}
-
-/** Get path to package.json */
-export function getPackageJsonPath(): string {
-  return join(getPackageDir(), "package.json");
-}
-
-/** Get path to README.md */
-export function getReadmePath(): string {
-  return resolve(join(getPackageDir(), "README.md"));
-}
-
-/** Get path to docs directory */
-export function getDocsPath(): string {
-  return resolve(join(getPackageDir(), "docs"));
-}
-
-/** Get path to examples directory */
-export function getExamplesPath(): string {
-  return resolve(join(getPackageDir(), "examples"));
-}
-
-/** Get path to CHANGELOG.md */
-export function getChangelogPath(): string {
-  return resolve(join(getPackageDir(), "CHANGELOG.md"));
-}
-
-/**
- * Get path to built-in interactive assets directory.
- * - For Bun binary: assets/ next to executable
- * - For Node.js (dist/): dist/modes/interactive/assets/
- * - For tsx (src/): src/modes/interactive/assets/
- */
-export function getInteractiveAssetsDir(): string {
-  if (isBunBinary) {
-    return join(dirname(process.execPath), "assets");
-  }
-  const packageDir = getPackageDir();
-  const srcOrDist = existsSync(join(packageDir, "src")) ? "src" : "dist";
-  return join(packageDir, srcOrDist, "modes", "interactive", "assets");
-}
-
-/** Get path to a bundled interactive asset */
-export function getBundledInteractiveAssetPath(name: string): string {
-  return join(getInteractiveAssetsDir(), name);
 }
 
 // =============================================================================
@@ -217,7 +217,7 @@ const pkg = (() => {
   try {
     return JSON.parse(readFileSync(getPackageJsonPath(), "utf-8"));
   } catch {
-    return { piConfig: { name: "pi", configDir: ".pi" }, version: "0.66.1" };
+    return { piConfig: { configDir: ".pi", name: "pi" }, version: "0.66.1" };
   }
 })();
 
@@ -229,16 +229,6 @@ export const VERSION: string = pkg.version;
 export const ENV_AGENT_DIR = `${APP_NAME.toUpperCase()}_CODING_AGENT_DIR`;
 
 const DEFAULT_SHARE_VIEWER_URL = "https://pi.dev/session/";
-
-/** Get the share viewer URL for a gist ID */
-export function getShareViewerUrl(gistId: string): string {
-  const baseUrl = process.env.PI_SHARE_VIEWER_URL || DEFAULT_SHARE_VIEWER_URL;
-  return `${baseUrl}#${gistId}`;
-}
-
-// =============================================================================
-// User Config Paths (~/.pi/agent/*)
-// =============================================================================
 
 /** Get the agent config directory (e.g., ~/.pi/agent/) */
 export function getAgentDir(): string {
@@ -252,34 +242,33 @@ export function getAgentDir(): string {
   return join(homedir(), CONFIG_DIR_NAME, "agent");
 }
 
-/** Get path to user's custom themes directory */
-export function getCustomThemesDir(): string {
-  return join(getAgentDir(), "themes");
-}
-
-/** Get path to models.json */
-export function getModelsPath(): string {
-  return join(getAgentDir(), "models.json");
-}
+// =============================================================================
+// User Config Paths (~/.pi/agent/*)
+// =============================================================================
 
 /** Get path to auth.json */
 export function getAuthPath(): string {
   return join(getAgentDir(), "auth.json");
 }
 
-/** Get path to settings.json */
-export function getSettingsPath(): string {
-  return join(getAgentDir(), "settings.json");
-}
-
-/** Get path to tools directory */
-export function getToolsDir(): string {
-  return join(getAgentDir(), "tools");
-}
-
 /** Get path to managed binaries directory (fd, rg) */
 export function getBinDir(): string {
   return join(getAgentDir(), "bin");
+}
+
+/** Get path to user's custom themes directory */
+export function getCustomThemesDir(): string {
+  return join(getAgentDir(), "themes");
+}
+
+/** Get path to debug log file */
+export function getDebugLogPath(): string {
+  return join(getAgentDir(), `${APP_NAME}-debug.log`);
+}
+
+/** Get path to models.json */
+export function getModelsPath(): string {
+  return join(getAgentDir(), "models.json");
 }
 
 /** Get path to prompt templates directory */
@@ -292,7 +281,18 @@ export function getSessionsDir(): string {
   return join(getAgentDir(), "sessions");
 }
 
-/** Get path to debug log file */
-export function getDebugLogPath(): string {
-  return join(getAgentDir(), `${APP_NAME}-debug.log`);
+/** Get path to settings.json */
+export function getSettingsPath(): string {
+  return join(getAgentDir(), "settings.json");
+}
+
+/** Get the share viewer URL for a gist ID */
+export function getShareViewerUrl(gistId: string): string {
+  const baseUrl = process.env.PI_SHARE_VIEWER_URL || DEFAULT_SHARE_VIEWER_URL;
+  return `${baseUrl}#${gistId}`;
+}
+
+/** Get path to tools directory */
+export function getToolsDir(): string {
+  return join(getAgentDir(), "tools");
 }

@@ -1,4 +1,5 @@
-import { describe, test, expect, vi } from "vitest";
+import { describe, expect, test, vi } from "vitest";
+
 import { WebSocketClientTransport } from "../../src/core/websocket-client-transport.js";
 
 describe("WebSocketClientTransport", () => {
@@ -17,8 +18,8 @@ describe("WebSocketClientTransport", () => {
   test("can be constructed with url and debug callback", () => {
     const debugFn = vi.fn();
     const transport = new WebSocketClientTransport({
-      url: "wss://test.example.com/ws",
       onDebug: debugFn,
+      url: "wss://test.example.com/ws",
     });
 
     expect(transport).toBeDefined();

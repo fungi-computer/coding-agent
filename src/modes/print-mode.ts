@@ -7,21 +7,23 @@
  */
 
 import type { AssistantMessage, ImageContent } from "@mariozechner/pi-ai";
+
 import type { AgentSessionRuntime } from "../core/agent-session-runtime.js";
+
 import { flushRawStdout, writeRawStdout } from "../core/output-guard.js";
 
 /**
  * Options for print mode.
  */
 export interface PrintModeOptions {
-  /** Output mode: "text" for final response only, "json" for all events */
-  mode: "text" | "json";
-  /** Array of additional prompts to send after initialMessage */
-  messages?: string[];
-  /** First message to send (may contain @file content) */
-  initialMessage?: string;
   /** Images to attach to the initial message */
   initialImages?: ImageContent[];
+  /** First message to send (may contain @file content) */
+  initialMessage?: string;
+  /** Array of additional prompts to send after initialMessage */
+  messages?: string[];
+  /** Output mode: "text" for final response only, "json" for all events */
+  mode: "json" | "text";
 }
 
 /**
@@ -32,7 +34,7 @@ export async function runPrintMode(
   runtimeHost: AgentSessionRuntime,
   options: PrintModeOptions,
 ): Promise<number> {
-  const { mode, messages = [], initialMessage, initialImages } = options;
+  const { initialImages, initialMessage, messages = [], mode } = options;
   let exitCode = 0;
   let session = runtimeHost.session;
   let unsubscribe: (() => void) | undefined;
@@ -41,14 +43,6 @@ export async function runPrintMode(
     session = runtimeHost.session;
     await session.bindExtensions({
       commandContextActions: {
-        waitForIdle: () => session.agent.waitForIdle(),
-        newSession: async (newSessionOptions) => {
-          const result = await runtimeHost.newSession(newSessionOptions);
-          if (!result.cancelled) {
-            await rebindSession();
-          }
-          return result;
-        },
         fork: async (entryId) => {
           const result = await runtimeHost.fork(entryId);
           if (!result.cancelled) {
@@ -58,15 +52,15 @@ export async function runPrintMode(
         },
         navigateTree: async (targetId, navigateOptions) => {
           const result = await session.navigateTree(targetId, {
-            summarize: navigateOptions?.summarize,
             customInstructions: navigateOptions?.customInstructions,
-            replaceInstructions: navigateOptions?.replaceInstructions,
             label: navigateOptions?.label,
+            replaceInstructions: navigateOptions?.replaceInstructions,
+            summarize: navigateOptions?.summarize,
           });
           return { cancelled: result.cancelled };
         },
-        switchSession: async (sessionPath) => {
-          const result = await runtimeHost.switchSession(sessionPath);
+        newSession: async (newSessionOptions) => {
+          const result = await runtimeHost.newSession(newSessionOptions);
           if (!result.cancelled) {
             await rebindSession();
           }
@@ -75,6 +69,14 @@ export async function runPrintMode(
         reload: async () => {
           await session.reload();
         },
+        switchSession: async (sessionPath) => {
+          const result = await runtimeHost.switchSession(sessionPath);
+          if (!result.cancelled) {
+            await rebindSession();
+          }
+          return result;
+        },
+        waitForIdle: () => session.agent.waitForIdle(),
       },
       onError: (err) => {
         console.error(`Extension error (${err.extensionPath}): ${err.error}`);

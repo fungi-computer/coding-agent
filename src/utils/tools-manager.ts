@@ -14,11 +14,24 @@ import { arch, platform } from "os";
 import { join } from "path";
 import { Readable } from "stream";
 import { pipeline } from "stream/promises";
+
 import { APP_NAME, getBinDir } from "../config.js";
 
 const TOOLS_DIR = getBinDir();
 const NETWORK_TIMEOUT_MS = 10_000;
 const DOWNLOAD_TIMEOUT_MS = 120_000;
+
+interface ToolConfig {
+  binaryName: string; // Name of the binary inside the archive
+  getAssetName: (
+    version: string,
+    plat: string,
+    architecture: string,
+  ) => null | string;
+  name: string;
+  repo: string; // GitHub repo (e.g., "sharkdp/fd")
+  tagPrefix: string; // Prefix for tags (e.g., "v" for v1.0.0, "" for 1.0.0)
+}
 
 function isOfflineModeEnabled(): boolean {
   const value = process.env.PI_OFFLINE;
@@ -30,24 +43,9 @@ function isOfflineModeEnabled(): boolean {
   );
 }
 
-interface ToolConfig {
-  name: string;
-  repo: string; // GitHub repo (e.g., "sharkdp/fd")
-  binaryName: string; // Name of the binary inside the archive
-  tagPrefix: string; // Prefix for tags (e.g., "v" for v1.0.0, "" for 1.0.0)
-  getAssetName: (
-    version: string,
-    plat: string,
-    architecture: string,
-  ) => string | null;
-}
-
 const TOOLS: Record<string, ToolConfig> = {
   fd: {
-    name: "fd",
-    repo: "sharkdp/fd",
     binaryName: "fd",
-    tagPrefix: "v",
     getAssetName: (version, plat, architecture) => {
       if (plat === "darwin") {
         const archStr = architecture === "arm64" ? "aarch64" : "x86_64";
@@ -61,12 +59,12 @@ const TOOLS: Record<string, ToolConfig> = {
       }
       return null;
     },
+    name: "fd",
+    repo: "sharkdp/fd",
+    tagPrefix: "v",
   },
   rg: {
-    name: "ripgrep",
-    repo: "BurntSushi/ripgrep",
     binaryName: "rg",
-    tagPrefix: "",
     getAssetName: (version, plat, architecture) => {
       if (plat === "darwin") {
         const archStr = architecture === "arm64" ? "aarch64" : "x86_64";
@@ -82,22 +80,14 @@ const TOOLS: Record<string, ToolConfig> = {
       }
       return null;
     },
+    name: "ripgrep",
+    repo: "BurntSushi/ripgrep",
+    tagPrefix: "",
   },
 };
 
-// Check if a command exists in PATH by trying to run it
-function commandExists(cmd: string): boolean {
-  try {
-    const result = spawnSync(cmd, ["--version"], { stdio: "pipe" });
-    // Check for ENOENT error (command not found)
-    return result.error === undefined || result.error === null;
-  } catch {
-    return false;
-  }
-}
-
 // Get the path to a tool (system-wide or in our tools dir)
-export function getToolPath(tool: "fd" | "rg"): string | null {
+export function getToolPath(tool: "fd" | "rg"): null | string {
   const config = TOOLS[tool];
   if (!config) return null;
 
@@ -118,22 +108,15 @@ export function getToolPath(tool: "fd" | "rg"): string | null {
   return null;
 }
 
-// Fetch latest release version from GitHub
-async function getLatestVersion(repo: string): Promise<string> {
-  const response = await fetch(
-    `https://api.github.com/repos/${repo}/releases/latest`,
-    {
-      headers: { "User-Agent": `${APP_NAME}-coding-agent` },
-      signal: AbortSignal.timeout(NETWORK_TIMEOUT_MS),
-    },
-  );
-
-  if (!response.ok) {
-    throw new Error(`GitHub API error: ${response.status}`);
+// Check if a command exists in PATH by trying to run it
+function commandExists(cmd: string): boolean {
+  try {
+    const result = spawnSync(cmd, ["--version"], { stdio: "pipe" });
+    // Check for ENOENT error (command not found)
+    return result.error === undefined || result.error === null;
+  } catch {
+    return false;
   }
-
-  const data = (await response.json()) as { tag_name: string };
-  return data.tag_name.replace(/^v/, "");
 }
 
 // Download a file from URL
@@ -152,31 +135,6 @@ async function downloadFile(url: string, dest: string): Promise<void> {
 
   const fileStream = createWriteStream(dest);
   await pipeline(Readable.fromWeb(response.body as any), fileStream);
-}
-
-function findBinaryRecursively(
-  rootDir: string,
-  binaryFileName: string,
-): string | null {
-  const stack: string[] = [rootDir];
-
-  while (stack.length > 0) {
-    const currentDir = stack.pop();
-    if (!currentDir) continue;
-
-    const entries = readdirSync(currentDir, { withFileTypes: true });
-    for (const entry of entries) {
-      const fullPath = join(currentDir, entry.name);
-      if (entry.isFile() && entry.name === binaryFileName) {
-        return fullPath;
-      }
-      if (entry.isDirectory()) {
-        stack.push(fullPath);
-      }
-    }
-  }
-
-  return null;
 }
 
 // Download and install a tool
@@ -270,10 +228,53 @@ async function downloadTool(tool: "fd" | "rg"): Promise<string> {
   } finally {
     // Cleanup
     rmSync(archivePath, { force: true });
-    rmSync(extractDir, { recursive: true, force: true });
+    rmSync(extractDir, { force: true, recursive: true });
   }
 
   return binaryPath;
+}
+
+function findBinaryRecursively(
+  rootDir: string,
+  binaryFileName: string,
+): null | string {
+  const stack: string[] = [rootDir];
+
+  while (stack.length > 0) {
+    const currentDir = stack.pop();
+    if (!currentDir) continue;
+
+    const entries = readdirSync(currentDir, { withFileTypes: true });
+    for (const entry of entries) {
+      const fullPath = join(currentDir, entry.name);
+      if (entry.isFile() && entry.name === binaryFileName) {
+        return fullPath;
+      }
+      if (entry.isDirectory()) {
+        stack.push(fullPath);
+      }
+    }
+  }
+
+  return null;
+}
+
+// Fetch latest release version from GitHub
+async function getLatestVersion(repo: string): Promise<string> {
+  const response = await fetch(
+    `https://api.github.com/repos/${repo}/releases/latest`,
+    {
+      headers: { "User-Agent": `${APP_NAME}-coding-agent` },
+      signal: AbortSignal.timeout(NETWORK_TIMEOUT_MS),
+    },
+  );
+
+  if (!response.ok) {
+    throw new Error(`GitHub API error: ${response.status}`);
+  }
+
+  const data = (await response.json()) as { tag_name: string };
+  return data.tag_name.replace(/^v/, "");
 }
 
 // Termux package names for tools
@@ -286,7 +287,7 @@ const TERMUX_PACKAGES: Record<string, string> = {
 // Returns the path to the tool, or null if unavailable
 export async function ensureTool(
   tool: "fd" | "rg",
-  silent: boolean = false,
+  silent = false,
 ): Promise<string | undefined> {
   const existingPath = getToolPath(tool);
   if (existingPath) {

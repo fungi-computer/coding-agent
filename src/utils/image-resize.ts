@@ -1,32 +1,33 @@
 import type { ImageContent } from "@mariozechner/pi-ai";
+
 import { applyExifOrientation } from "./exif-orientation.js";
 import { loadPhoton } from "./photon.js";
 
 export interface ImageResizeOptions {
-  maxWidth?: number; // Default: 2000
-  maxHeight?: number; // Default: 2000
-  maxBytes?: number; // Default: 4.5MB of base64 payload (below Anthropic's 5MB limit)
   jpegQuality?: number; // Default: 80
+  maxBytes?: number; // Default: 4.5MB of base64 payload (below Anthropic's 5MB limit)
+  maxHeight?: number; // Default: 2000
+  maxWidth?: number; // Default: 2000
 }
 
 export interface ResizedImage {
   data: string; // base64
-  mimeType: string;
-  originalWidth: number;
-  originalHeight: number;
-  width: number;
   height: number;
+  mimeType: string;
+  originalHeight: number;
+  originalWidth: number;
   wasResized: boolean;
+  width: number;
 }
 
 // 4.5MB of base64 payload. Provides headroom below Anthropic's 5MB limit.
 const DEFAULT_MAX_BYTES = 4.5 * 1024 * 1024;
 
 const DEFAULT_OPTIONS: Required<ImageResizeOptions> = {
-  maxWidth: 2000,
-  maxHeight: 2000,
-  maxBytes: DEFAULT_MAX_BYTES,
   jpegQuality: 80,
+  maxBytes: DEFAULT_MAX_BYTES,
+  maxHeight: 2000,
+  maxWidth: 2000,
 };
 
 interface EncodedCandidate {
@@ -35,16 +36,17 @@ interface EncodedCandidate {
   mimeType: string;
 }
 
-function encodeCandidate(
-  buffer: Uint8Array,
-  mimeType: string,
-): EncodedCandidate {
-  const data = Buffer.from(buffer).toString("base64");
-  return {
-    data,
-    encodedSize: Buffer.byteLength(data, "utf-8"),
-    mimeType,
-  };
+/**
+ * Format a dimension note for resized images.
+ * This helps the model understand the coordinate mapping.
+ */
+export function formatDimensionNote(result: ResizedImage): string | undefined {
+  if (!result.wasResized) {
+    return undefined;
+  }
+
+  const scale = result.originalWidth / result.width;
+  return `[Image: original ${result.originalWidth}x${result.originalHeight}, displayed at ${result.width}x${result.height}. Multiply coordinates by ${scale.toFixed(2)} to map to original image.]`;
 }
 
 /**
@@ -63,7 +65,7 @@ function encodeCandidate(
 export async function resizeImage(
   img: ImageContent,
   options?: ImageResizeOptions,
-): Promise<ResizedImage | null> {
+): Promise<null | ResizedImage> {
   const opts = { ...DEFAULT_OPTIONS, ...options };
   const inputBuffer = Buffer.from(img.data, "base64");
   const inputBase64Size = Buffer.byteLength(img.data, "utf-8");
@@ -94,12 +96,12 @@ export async function resizeImage(
     ) {
       return {
         data: img.data,
-        mimeType: img.mimeType ?? `image/${format}`,
-        originalWidth,
-        originalHeight,
-        width: originalWidth,
         height: originalHeight,
+        mimeType: img.mimeType ?? `image/${format}`,
+        originalHeight,
+        originalWidth,
         wasResized: false,
+        width: originalWidth,
       };
     }
 
@@ -144,7 +146,7 @@ export async function resizeImage(
     }
 
     const qualitySteps = Array.from(
-      new Set([opts.jpegQuality, 85, 70, 55, 40]),
+      new Set([40, 55, 70, 85, opts.jpegQuality]),
     );
     let currentWidth = targetWidth;
     let currentHeight = targetHeight;
@@ -159,12 +161,12 @@ export async function resizeImage(
         if (candidate.encodedSize < opts.maxBytes) {
           return {
             data: candidate.data,
-            mimeType: candidate.mimeType,
-            originalWidth,
-            originalHeight,
-            width: currentWidth,
             height: currentHeight,
+            mimeType: candidate.mimeType,
+            originalHeight,
+            originalWidth,
             wasResized: true,
+            width: currentWidth,
           };
         }
       }
@@ -195,15 +197,14 @@ export async function resizeImage(
   }
 }
 
-/**
- * Format a dimension note for resized images.
- * This helps the model understand the coordinate mapping.
- */
-export function formatDimensionNote(result: ResizedImage): string | undefined {
-  if (!result.wasResized) {
-    return undefined;
-  }
-
-  const scale = result.originalWidth / result.width;
-  return `[Image: original ${result.originalWidth}x${result.originalHeight}, displayed at ${result.width}x${result.height}. Multiply coordinates by ${scale.toFixed(2)} to map to original image.]`;
+function encodeCandidate(
+  buffer: Uint8Array,
+  mimeType: string,
+): EncodedCandidate {
+  const data = Buffer.from(buffer).toString("base64");
+  return {
+    data,
+    encodedSize: Buffer.byteLength(data, "utf-8"),
+    mimeType,
+  };
 }

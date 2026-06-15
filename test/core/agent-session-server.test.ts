@@ -1,31 +1,41 @@
-import { describe, test, expect, beforeEach, vi } from "vitest";
-import { AgentSessionServer } from "../../src/core/agent-session-server.js";
-import { InMemoryTransport } from "../../src/core/in-memory-transport.js";
-import { InMemorySessionStore } from "../../src/core/in-memory-session-store.js";
+import { beforeEach, describe, expect, test, vi } from "vitest";
+
 import type { SessionFactory } from "../../src/core/agent-session-server-types.js";
 import type { AgentSession } from "../../src/core/agent-session.js";
 
+import { AgentSessionServer } from "../../src/core/agent-session-server.js";
+import { InMemorySessionStore } from "../../src/core/in-memory-session-store.js";
+import { InMemoryTransport } from "../../src/core/in-memory-transport.js";
+
 const createMockSessionFactory = (
-  session?: Partial<AgentSession> | null,
+  session?: null | Partial<AgentSession>,
 ): SessionFactory => {
   const defaultSession: Partial<AgentSession> = {
-    sessionId: "",
-    thinkingLevel: "medium",
-    isStreaming: false,
-    getActiveToolNames: vi.fn().mockReturnValue([]),
-    subscribe: vi.fn().mockReturnValue(() => {}),
-    dispose: vi.fn(),
-    prompt: vi.fn().mockResolvedValue(undefined),
     abort: vi.fn(),
+    compact: vi.fn().mockResolvedValue(undefined),
+    dispose: vi.fn(),
+    getActiveToolNames: vi.fn().mockReturnValue([]),
+    getContextUsage: vi.fn().mockReturnValue(undefined),
+    getSessionStats: vi.fn().mockReturnValue(undefined),
+    isStreaming: false,
+    navigateTree: vi.fn().mockResolvedValue(undefined),
+    prompt: vi.fn().mockResolvedValue(undefined),
+    sessionId: "",
+    sessionManager: {
+      getBranch: vi.fn().mockReturnValue([]),
+      getCwd: vi.fn().mockReturnValue("/tmp"),
+      getEntries: vi.fn().mockReturnValue([]),
+      getLeafId: vi.fn().mockReturnValue(null),
+    } as any,
+    setActiveToolsByName: vi.fn(),
     setModel: vi.fn().mockResolvedValue(undefined),
     setThinkingLevel: vi.fn(),
-    setActiveToolsByName: vi.fn(),
-    navigateTree: vi.fn().mockResolvedValue(undefined),
-    compact: vi.fn().mockResolvedValue(undefined),
+    subscribe: vi.fn().mockReturnValue(() => {}),
+    thinkingLevel: "medium",
   };
   return {
-    createSession: vi.fn().mockResolvedValue(session ?? defaultSession),
     closeSession: vi.fn().mockResolvedValue(undefined),
+    createSession: vi.fn().mockResolvedValue(session ?? defaultSession),
   };
 };
 
@@ -167,7 +177,7 @@ describe("AgentSessionServer", () => {
       await server.leaveSession(sessionId);
 
       expect(factory.closeSession).toHaveBeenCalledWith(sessionId);
-      expect(factory.createSession({ sessionId, cwd: "/tmp" })).toBeDefined();
+      expect(factory.createSession({ cwd: "/tmp", sessionId })).toBeDefined();
 
       await server.stop();
     });
@@ -202,16 +212,24 @@ describe("AgentSessionServer", () => {
       const transport = new InMemoryTransport();
       const store = new InMemorySessionStore();
       const mockSession = {
-        sessionId: "test",
-        getActiveToolNames: vi.fn().mockReturnValue([]),
-        subscribe: vi.fn().mockReturnValue(() => {}),
-        dispose: vi.fn(),
-        prompt: vi.fn().mockResolvedValue(undefined),
         abort: vi.fn(),
-        setThinkingLevel: vi.fn(),
-        setActiveToolsByName: vi.fn(),
-        navigateTree: vi.fn().mockResolvedValue(undefined),
         compact: vi.fn().mockResolvedValue(undefined),
+        dispose: vi.fn(),
+        getActiveToolNames: vi.fn().mockReturnValue([]),
+        getContextUsage: vi.fn().mockReturnValue(undefined),
+        getSessionStats: vi.fn().mockReturnValue(undefined),
+        navigateTree: vi.fn().mockResolvedValue(undefined),
+        prompt: vi.fn().mockResolvedValue(undefined),
+        sessionId: "test",
+        sessionManager: {
+          getBranch: vi.fn().mockReturnValue([]),
+          getCwd: vi.fn().mockReturnValue("/tmp"),
+          getEntries: vi.fn().mockReturnValue([]),
+          getLeafId: vi.fn().mockReturnValue(null),
+        },
+        setActiveToolsByName: vi.fn(),
+        setThinkingLevel: vi.fn(),
+        subscribe: vi.fn().mockReturnValue(() => {}),
       };
       const factory = createMockSessionFactory(
         mockSession as unknown as AgentSession,
@@ -226,7 +244,7 @@ describe("AgentSessionServer", () => {
       await server.start();
       const { sessionId } = await server.createSession("/tmp");
 
-      await server.command(sessionId, { type: "prompt", text: "Hello" });
+      await server.command(sessionId, { text: "Hello", type: "prompt" });
 
       expect(mockSession.prompt).toHaveBeenCalledWith("Hello");
 
@@ -237,16 +255,24 @@ describe("AgentSessionServer", () => {
       const transport = new InMemoryTransport();
       const store = new InMemorySessionStore();
       const mockSession = {
-        sessionId: "test",
-        getActiveToolNames: vi.fn().mockReturnValue([]),
-        subscribe: vi.fn().mockReturnValue(() => {}),
-        dispose: vi.fn(),
-        prompt: vi.fn().mockResolvedValue(undefined),
         abort: vi.fn(),
-        setThinkingLevel: vi.fn(),
-        setActiveToolsByName: vi.fn(),
-        navigateTree: vi.fn().mockResolvedValue(undefined),
         compact: vi.fn().mockResolvedValue(undefined),
+        dispose: vi.fn(),
+        getActiveToolNames: vi.fn().mockReturnValue([]),
+        getContextUsage: vi.fn().mockReturnValue(undefined),
+        getSessionStats: vi.fn().mockReturnValue(undefined),
+        navigateTree: vi.fn().mockResolvedValue(undefined),
+        prompt: vi.fn().mockResolvedValue(undefined),
+        sessionId: "test",
+        sessionManager: {
+          getBranch: vi.fn().mockReturnValue([]),
+          getCwd: vi.fn().mockReturnValue("/tmp"),
+          getEntries: vi.fn().mockReturnValue([]),
+          getLeafId: vi.fn().mockReturnValue(null),
+        },
+        setActiveToolsByName: vi.fn(),
+        setThinkingLevel: vi.fn(),
+        subscribe: vi.fn().mockReturnValue(() => {}),
       };
       const factory = createMockSessionFactory(
         mockSession as unknown as AgentSession,
@@ -262,8 +288,8 @@ describe("AgentSessionServer", () => {
       const { sessionId } = await server.createSession("/tmp");
 
       await server.command(sessionId, {
-        type: "set_thinking_level",
         level: "high",
+        type: "set_thinking_level",
       });
 
       expect(mockSession.setThinkingLevel).toHaveBeenCalledWith("high");
@@ -285,7 +311,7 @@ describe("AgentSessionServer", () => {
       await server.start();
 
       await expect(
-        server.command("nonexistent", { type: "prompt", text: "hi" }),
+        server.command("nonexistent", { text: "hi", type: "prompt" }),
       ).rejects.toThrow("Session not found");
 
       await server.stop();
@@ -294,22 +320,30 @@ describe("AgentSessionServer", () => {
     test("set_model command resolves model via ModelRegistry and calls session.setModel", async () => {
       const transport = new InMemoryTransport();
       const store = new InMemorySessionStore();
-      const mockModel = { provider: "anthropic", id: "claude-3-5-sonnet" };
+      const mockModel = { id: "claude-3-5-sonnet", provider: "anthropic" };
       const mockModelRegistry = {
         find: vi.fn().mockReturnValue(mockModel),
       };
       const mockSession = {
-        sessionId: "test",
-        getActiveToolNames: vi.fn().mockReturnValue([]),
-        subscribe: vi.fn().mockReturnValue(() => {}),
-        dispose: vi.fn(),
-        prompt: vi.fn().mockResolvedValue(undefined),
         abort: vi.fn(),
+        compact: vi.fn().mockResolvedValue(undefined),
+        dispose: vi.fn(),
+        getActiveToolNames: vi.fn().mockReturnValue([]),
+        getContextUsage: vi.fn().mockReturnValue(undefined),
+        getSessionStats: vi.fn().mockReturnValue(undefined),
+        navigateTree: vi.fn().mockResolvedValue(undefined),
+        prompt: vi.fn().mockResolvedValue(undefined),
+        sessionId: "test",
+        sessionManager: {
+          getBranch: vi.fn().mockReturnValue([]),
+          getCwd: vi.fn().mockReturnValue("/tmp"),
+          getEntries: vi.fn().mockReturnValue([]),
+          getLeafId: vi.fn().mockReturnValue(null),
+        },
+        setActiveToolsByName: vi.fn(),
         setModel: vi.fn().mockResolvedValue(undefined),
         setThinkingLevel: vi.fn(),
-        setActiveToolsByName: vi.fn(),
-        navigateTree: vi.fn().mockResolvedValue(undefined),
-        compact: vi.fn().mockResolvedValue(undefined),
+        subscribe: vi.fn().mockReturnValue(() => {}),
       };
       const factory = createMockSessionFactory(
         mockSession as unknown as AgentSession,
@@ -325,9 +359,9 @@ describe("AgentSessionServer", () => {
       const { sessionId } = await server.createSession("/tmp");
 
       await server.command(sessionId, {
-        type: "set_model",
         modelId: "claude-3-5-sonnet",
         provider: "anthropic",
+        type: "set_model",
       });
 
       expect(mockModelRegistry.find).toHaveBeenCalledWith(
@@ -346,30 +380,38 @@ describe("AgentSessionServer", () => {
       const store = new InMemorySessionStore();
 
       const mockSession = {
-        sessionId: "test-session",
-        cwd: "/tmp",
-        model: undefined,
-        thinkingLevel: "medium" as const,
-        isStreaming: false,
-        sessionName: undefined,
-        leafId: null,
-        activeToolNames: [] as string[],
-        getActiveToolNames: vi.fn().mockReturnValue([]),
-        prompt: vi.fn().mockResolvedValue(undefined),
+        _listener: undefined as ((event: any) => void) | undefined,
         abort: vi.fn(),
+        activeToolNames: [] as string[],
+        compact: vi.fn().mockResolvedValue(undefined),
+        cwd: "/tmp",
+        dispose: vi.fn(),
+        getActiveToolNames: vi.fn().mockReturnValue([]),
+        getContextUsage: vi.fn().mockReturnValue(undefined),
+        getSessionStats: vi.fn().mockReturnValue(undefined),
+        isStreaming: false,
+        leafId: null,
+        model: undefined,
+        navigateTree: vi.fn().mockResolvedValue(undefined),
+        prompt: vi.fn().mockResolvedValue(undefined),
+        sessionId: "test-session",
+        sessionName: undefined,
+        sessionManager: {
+          getBranch: vi.fn().mockReturnValue([]),
+          getCwd: vi.fn().mockReturnValue("/tmp"),
+          getEntries: vi.fn().mockReturnValue([]),
+          getLeafId: vi.fn().mockReturnValue(null),
+        },
+        setActiveToolsByName: vi.fn(),
         setModel: vi.fn().mockResolvedValue(undefined),
         setThinkingLevel: vi.fn(),
-        setActiveToolsByName: vi.fn(),
-        navigateTree: vi.fn().mockResolvedValue(undefined),
-        compact: vi.fn().mockResolvedValue(undefined),
-        dispose: vi.fn(),
         subscribe: vi.fn((listener: (event: any) => void) => {
           mockSession._listener = listener;
           return () => {
             mockSession._listener = undefined;
           };
         }),
-        _listener: undefined as ((event: any) => void) | undefined,
+        thinkingLevel: "medium" as const,
       };
 
       const factory = createMockSessionFactory(
@@ -389,10 +431,10 @@ describe("AgentSessionServer", () => {
       server.subscribeSession(sessionId, (e) => sessionEvents.push(e));
 
       mockSession._listener?.({
-        type: "model_changed",
         model: undefined,
         previousModel: undefined,
         source: "set",
+        type: "model_changed",
       });
 
       expect(sessionEvents.length).toBe(1);
@@ -408,30 +450,38 @@ describe("AgentSessionServer", () => {
       const { sessionId } = await store.createSession("/test");
 
       const mockSession = {
-        sessionId,
-        cwd: "/test",
-        model: undefined,
-        thinkingLevel: "medium" as const,
-        isStreaming: false,
-        sessionName: undefined,
-        leafId: null,
-        activeToolNames: [] as string[],
-        getActiveToolNames: vi.fn().mockReturnValue([]),
-        prompt: vi.fn().mockResolvedValue(undefined),
+        _listener: undefined as ((event: any) => void) | undefined,
         abort: vi.fn(),
+        activeToolNames: [] as string[],
+        compact: vi.fn().mockResolvedValue(undefined),
+        cwd: "/test",
+        dispose: vi.fn(),
+        getActiveToolNames: vi.fn().mockReturnValue([]),
+        getContextUsage: vi.fn().mockReturnValue(undefined),
+        getSessionStats: vi.fn().mockReturnValue(undefined),
+        isStreaming: false,
+        leafId: null,
+        model: undefined,
+        navigateTree: vi.fn().mockResolvedValue(undefined),
+        prompt: vi.fn().mockResolvedValue(undefined),
+        sessionId,
+        sessionName: undefined,
+        sessionManager: {
+          getBranch: vi.fn().mockReturnValue([]),
+          getCwd: vi.fn().mockReturnValue("/test"),
+          getEntries: vi.fn().mockReturnValue([]),
+          getLeafId: vi.fn().mockReturnValue(null),
+        },
+        setActiveToolsByName: vi.fn(),
         setModel: vi.fn().mockResolvedValue(undefined),
         setThinkingLevel: vi.fn(),
-        setActiveToolsByName: vi.fn(),
-        navigateTree: vi.fn().mockResolvedValue(undefined),
-        compact: vi.fn().mockResolvedValue(undefined),
-        dispose: vi.fn(),
         subscribe: vi.fn((listener: (event: any) => void) => {
           mockSession._listener = listener;
           return () => {
             mockSession._listener = undefined;
           };
         }),
-        _listener: undefined as ((event: any) => void) | undefined,
+        thinkingLevel: "medium" as const,
       };
 
       const factory = createMockSessionFactory(
@@ -451,9 +501,9 @@ describe("AgentSessionServer", () => {
       server.subscribeSession(sessionId, (e) => sessionEvents.push(e));
 
       mockSession._listener?.({
-        type: "thinking_level_changed",
-        level: "high",
         availableLevels: ["off", "low", "medium", "high"],
+        level: "high",
+        type: "thinking_level_changed",
       });
 
       expect(sessionEvents.length).toBe(1);

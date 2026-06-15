@@ -1,20 +1,13 @@
 import { execSync, spawn } from "child_process";
 import { platform } from "os";
+
 import { isWaylandSession } from "./clipboard-image.js";
 import { clipboard } from "./clipboard-native.js";
 
-type NativeClipboardExecOptions = {
+interface NativeClipboardExecOptions {
   input: string;
-  timeout: number;
   stdio: ["pipe", "ignore", "ignore"];
-};
-
-function copyToX11Clipboard(options: NativeClipboardExecOptions): void {
-  try {
-    execSync("xclip -selection clipboard", options);
-  } catch {
-    execSync("xsel --clipboard --input", options);
-  }
+  timeout: number;
 }
 
 export async function copyToClipboard(text: string): Promise<void> {
@@ -35,8 +28,8 @@ export async function copyToClipboard(text: string): Promise<void> {
   const p = platform();
   const options: NativeClipboardExecOptions = {
     input: text,
-    timeout: 5000,
     stdio: ["pipe", "ignore", "ignore"],
+    timeout: 5000,
   };
 
   try {
@@ -83,5 +76,13 @@ export async function copyToClipboard(text: string): Promise<void> {
     }
   } catch {
     // Ignore - OSC 52 already emitted as fallback
+  }
+}
+
+function copyToX11Clipboard(options: NativeClipboardExecOptions): void {
+  try {
+    execSync("xclip -selection clipboard", options);
+  } catch {
+    execSync("xsel --clipboard --input", options);
   }
 }

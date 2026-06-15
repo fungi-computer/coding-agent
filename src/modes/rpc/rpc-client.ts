@@ -4,16 +4,17 @@
  * Spawns the agent in RPC mode and provides a typed API for all operations.
  */
 
-import { type ChildProcess, spawn } from "node:child_process";
+import type { ImageContent } from "@mariozechner/pi-ai";
 import type {
   AgentEvent,
   AgentMessage,
   ThinkingLevel,
 } from "@shiit/agent-core";
-import type { ImageContent } from "@mariozechner/pi-ai";
+
+import { type ChildProcess, spawn } from "node:child_process";
+
 import type { SessionStats } from "../../core/agent-session.js";
 import type { CompactionResult } from "../../core/compaction/index.js";
-import { attachJsonlLineReader, serializeJsonLine } from "./jsonl.js";
 import type {
   RpcCommand,
   RpcResponse,
@@ -21,9 +22,35 @@ import type {
   RpcSlashCommand,
 } from "./rpc-types.js";
 
+import { attachJsonlLineReader, serializeJsonLine } from "./jsonl.js";
+
 // ============================================================================
 // Types
 // ============================================================================
+
+export interface ModelInfo {
+  contextWindow: number;
+  id: string;
+  provider: string;
+  reasoning: boolean;
+}
+
+export interface RpcClientOptions {
+  /** Additional CLI arguments */
+  args?: string[];
+  /** Path to the CLI entry point (default: searches for dist/cli.js) */
+  cliPath?: string;
+  /** Working directory for the agent */
+  cwd?: string;
+  /** Environment variables */
+  env?: Record<string, string>;
+  /** Model ID to use */
+  model?: string;
+  /** Provider to use */
+  provider?: string;
+}
+
+export type RpcEventListener = (event: AgentEvent) => void;
 
 /** Distributive Omit that works with union types */
 type DistributiveOmit<T, K extends keyof T> = T extends unknown
@@ -33,46 +60,277 @@ type DistributiveOmit<T, K extends keyof T> = T extends unknown
 /** RpcCommand without the id field (for internal send) */
 type RpcCommandBody = DistributiveOmit<RpcCommand, "id">;
 
-export interface RpcClientOptions {
-  /** Path to the CLI entry point (default: searches for dist/cli.js) */
-  cliPath?: string;
-  /** Working directory for the agent */
-  cwd?: string;
-  /** Environment variables */
-  env?: Record<string, string>;
-  /** Provider to use */
-  provider?: string;
-  /** Model ID to use */
-  model?: string;
-  /** Additional CLI arguments */
-  args?: string[];
-}
-
-export interface ModelInfo {
-  provider: string;
-  id: string;
-  contextWindow: number;
-  reasoning: boolean;
-}
-
-export type RpcEventListener = (event: AgentEvent) => void;
-
 // ============================================================================
 // RPC Client
 // ============================================================================
 
 export class RpcClient {
-  private process: ChildProcess | null = null;
-  private stopReadingStdout: (() => void) | null = null;
   private eventListeners: RpcEventListener[] = [];
-  private pendingRequests: Map<
+  private pendingRequests = new Map<
     string,
-    { resolve: (response: RpcResponse) => void; reject: (error: Error) => void }
-  > = new Map();
+    { reject: (error: Error) => void; resolve: (response: RpcResponse) => void; }
+  >();
+  private process: ChildProcess | null = null;
   private requestId = 0;
   private stderr = "";
+  private stopReadingStdout: (() => void) | null = null;
 
   constructor(private options: RpcClientOptions = {}) {}
+
+  /**
+   * Abort current operation.
+   */
+  async abort(): Promise<void> {
+    await this.send({ type: "abort" });
+  }
+
+  /**
+   * Abort in-progress retry.
+   */
+  async abortRetry(): Promise<void> {
+    await this.send({ type: "abort_retry" });
+  }
+
+  /**
+   * Collect events until agent becomes idle.
+   */
+  collectEvents(timeout = 60000): Promise<AgentEvent[]> {
+    return new Promise((resolve, reject) => {
+      const events: AgentEvent[] = [];
+      const timer = setTimeout(() => {
+        unsubscribe();
+        reject(new Error(`Timeout collecting events. Stderr: ${this.stderr}`));
+      }, timeout);
+
+      const unsubscribe = this.onEvent((event) => {
+        events.push(event);
+        if (event.type === "agent_end") {
+          clearTimeout(timer);
+          unsubscribe();
+          resolve(events);
+        }
+      });
+    });
+  }
+
+  /**
+   * Compact session context.
+   */
+  async compact(customInstructions?: string): Promise<CompactionResult> {
+    const response = await this.send({ customInstructions, type: "compact" });
+    return this.getData(response);
+  }
+
+  // =========================================================================
+  // Command Methods
+  // =========================================================================
+
+  /**
+   * Cycle to next model.
+   */
+  async cycleModel(): Promise<{
+    isScoped: boolean;
+    model: { id: string; provider: string; };
+    thinkingLevel: ThinkingLevel;
+  } | null> {
+    const response = await this.send({ type: "cycle_model" });
+    return this.getData(response);
+  }
+
+  /**
+   * Cycle thinking level.
+   */
+  async cycleThinkingLevel(): Promise<{ level: ThinkingLevel } | null> {
+    const response = await this.send({ type: "cycle_thinking_level" });
+    return this.getData(response);
+  }
+
+  /**
+   * Export session to HTML.
+   */
+  async exportHtml(outputPath?: string): Promise<{ path: string }> {
+    const response = await this.send({ outputPath, type: "export_html" });
+    return this.getData(response);
+  }
+
+  /**
+   * Queue a follow-up message to be processed after the agent finishes.
+   */
+  async followUp(message: string, images?: ImageContent[]): Promise<void> {
+    await this.send({ images, message, type: "follow_up" });
+  }
+
+  /**
+   * Fork from a specific message.
+   * @returns Object with `text` (the message text) and `cancelled` (if extension cancelled)
+   */
+  async fork(entryId: string): Promise<{ cancelled: boolean; text: string; }> {
+    const response = await this.send({ entryId, type: "fork" });
+    return this.getData(response);
+  }
+
+  /**
+   * Get list of available models.
+   */
+  async getAvailableModels(): Promise<ModelInfo[]> {
+    const response = await this.send({ type: "get_available_models" });
+    return this.getData<{ models: ModelInfo[] }>(response).models;
+  }
+
+  /**
+   * Get available commands (extension commands, prompt templates, skills).
+   */
+  async getCommands(): Promise<RpcSlashCommand[]> {
+    const response = await this.send({ type: "get_commands" });
+    return this.getData<{ commands: RpcSlashCommand[] }>(response).commands;
+  }
+
+  /**
+   * Get messages available for forking.
+   */
+  async getForkMessages(): Promise<{ entryId: string; text: string }[]> {
+    const response = await this.send({ type: "get_fork_messages" });
+    return this.getData<{ messages: { entryId: string; text: string }[] }>(
+      response,
+    ).messages;
+  }
+
+  /**
+   * Get text of last assistant message.
+   */
+  async getLastAssistantText(): Promise<null | string> {
+    const response = await this.send({ type: "get_last_assistant_text" });
+    return this.getData<{ text: null | string }>(response).text;
+  }
+
+  /**
+   * Get all messages in the session.
+   */
+  async getMessages(): Promise<AgentMessage[]> {
+    const response = await this.send({ type: "get_messages" });
+    return this.getData<{ messages: AgentMessage[] }>(response).messages;
+  }
+
+  /**
+   * Get session statistics.
+   */
+  async getSessionStats(): Promise<SessionStats> {
+    const response = await this.send({ type: "get_session_stats" });
+    return this.getData(response);
+  }
+
+  /**
+   * Get current session state.
+   */
+  async getState(): Promise<RpcSessionState> {
+    const response = await this.send({ type: "get_state" });
+    return this.getData(response);
+  }
+
+  /**
+   * Get collected stderr output (useful for debugging).
+   */
+  getStderr(): string {
+    return this.stderr;
+  }
+
+  /**
+   * Start a new session, optionally with parent tracking.
+   * @param parentSession - Optional parent session path for lineage tracking
+   * @returns Object with `cancelled: true` if an extension cancelled the new session
+   */
+  async newSession(parentSession?: string): Promise<{ cancelled: boolean }> {
+    const response = await this.send({ parentSession, type: "new_session" });
+    return this.getData(response);
+  }
+
+  /**
+   * Subscribe to agent events.
+   */
+  onEvent(listener: RpcEventListener): () => void {
+    this.eventListeners.push(listener);
+    return () => {
+      const index = this.eventListeners.indexOf(listener);
+      if (index !== -1) {
+        this.eventListeners.splice(index, 1);
+      }
+    };
+  }
+
+  /**
+   * Send a prompt to the agent.
+   * Returns immediately after sending; use onEvent() to receive streaming events.
+   * Use waitForIdle() to wait for completion.
+   */
+  async prompt(message: string, images?: ImageContent[]): Promise<void> {
+    await this.send({ images, message, type: "prompt" });
+  }
+
+  /**
+   * Send prompt and wait for completion, returning all events.
+   */
+  async promptAndWait(
+    message: string,
+    images?: ImageContent[],
+    timeout = 60000,
+  ): Promise<AgentEvent[]> {
+    const eventsPromise = this.collectEvents(timeout);
+    await this.prompt(message, images);
+    return eventsPromise;
+  }
+
+  /**
+   * Set auto-compaction enabled/disabled.
+   */
+  async setAutoCompaction(enabled: boolean): Promise<void> {
+    await this.send({ enabled, type: "set_auto_compaction" });
+  }
+
+  /**
+   * Set auto-retry enabled/disabled.
+   */
+  async setAutoRetry(enabled: boolean): Promise<void> {
+    await this.send({ enabled, type: "set_auto_retry" });
+  }
+
+  /**
+   * Set follow-up mode.
+   */
+  async setFollowUpMode(mode: "all" | "one-at-a-time"): Promise<void> {
+    await this.send({ mode, type: "set_follow_up_mode" });
+  }
+
+  /**
+   * Set model by provider and ID.
+   */
+  async setModel(
+    provider: string,
+    modelId: string,
+  ): Promise<{ id: string; provider: string; }> {
+    const response = await this.send({ modelId, provider, type: "set_model" });
+    return this.getData(response);
+  }
+
+  /**
+   * Set the session display name.
+   */
+  async setSessionName(name: string): Promise<void> {
+    await this.send({ name, type: "set_session_name" });
+  }
+
+  /**
+   * Set steering mode.
+   */
+  async setSteeringMode(mode: "all" | "one-at-a-time"): Promise<void> {
+    await this.send({ mode, type: "set_steering_mode" });
+  }
+
+  /**
+   * Set thinking level.
+   */
+  async setThinkingLevel(level: ThinkingLevel): Promise<void> {
+    await this.send({ level, type: "set_thinking_level" });
+  }
 
   /**
    * Start the RPC agent process.
@@ -126,6 +384,17 @@ export class RpcClient {
   }
 
   /**
+   * Queue a steering message to interrupt the agent mid-run.
+   */
+  async steer(message: string, images?: ImageContent[]): Promise<void> {
+    await this.send({ images, message, type: "steer" });
+  }
+
+  // =========================================================================
+  // Helpers
+  // =========================================================================
+
+  /**
    * Stop the RPC agent process.
    */
   async stop(): Promise<void> {
@@ -153,244 +422,13 @@ export class RpcClient {
   }
 
   /**
-   * Subscribe to agent events.
-   */
-  onEvent(listener: RpcEventListener): () => void {
-    this.eventListeners.push(listener);
-    return () => {
-      const index = this.eventListeners.indexOf(listener);
-      if (index !== -1) {
-        this.eventListeners.splice(index, 1);
-      }
-    };
-  }
-
-  /**
-   * Get collected stderr output (useful for debugging).
-   */
-  getStderr(): string {
-    return this.stderr;
-  }
-
-  // =========================================================================
-  // Command Methods
-  // =========================================================================
-
-  /**
-   * Send a prompt to the agent.
-   * Returns immediately after sending; use onEvent() to receive streaming events.
-   * Use waitForIdle() to wait for completion.
-   */
-  async prompt(message: string, images?: ImageContent[]): Promise<void> {
-    await this.send({ type: "prompt", message, images });
-  }
-
-  /**
-   * Queue a steering message to interrupt the agent mid-run.
-   */
-  async steer(message: string, images?: ImageContent[]): Promise<void> {
-    await this.send({ type: "steer", message, images });
-  }
-
-  /**
-   * Queue a follow-up message to be processed after the agent finishes.
-   */
-  async followUp(message: string, images?: ImageContent[]): Promise<void> {
-    await this.send({ type: "follow_up", message, images });
-  }
-
-  /**
-   * Abort current operation.
-   */
-  async abort(): Promise<void> {
-    await this.send({ type: "abort" });
-  }
-
-  /**
-   * Start a new session, optionally with parent tracking.
-   * @param parentSession - Optional parent session path for lineage tracking
-   * @returns Object with `cancelled: true` if an extension cancelled the new session
-   */
-  async newSession(parentSession?: string): Promise<{ cancelled: boolean }> {
-    const response = await this.send({ type: "new_session", parentSession });
-    return this.getData(response);
-  }
-
-  /**
-   * Get current session state.
-   */
-  async getState(): Promise<RpcSessionState> {
-    const response = await this.send({ type: "get_state" });
-    return this.getData(response);
-  }
-
-  /**
-   * Set model by provider and ID.
-   */
-  async setModel(
-    provider: string,
-    modelId: string,
-  ): Promise<{ provider: string; id: string }> {
-    const response = await this.send({ type: "set_model", provider, modelId });
-    return this.getData(response);
-  }
-
-  /**
-   * Cycle to next model.
-   */
-  async cycleModel(): Promise<{
-    model: { provider: string; id: string };
-    thinkingLevel: ThinkingLevel;
-    isScoped: boolean;
-  } | null> {
-    const response = await this.send({ type: "cycle_model" });
-    return this.getData(response);
-  }
-
-  /**
-   * Get list of available models.
-   */
-  async getAvailableModels(): Promise<ModelInfo[]> {
-    const response = await this.send({ type: "get_available_models" });
-    return this.getData<{ models: ModelInfo[] }>(response).models;
-  }
-
-  /**
-   * Set thinking level.
-   */
-  async setThinkingLevel(level: ThinkingLevel): Promise<void> {
-    await this.send({ type: "set_thinking_level", level });
-  }
-
-  /**
-   * Cycle thinking level.
-   */
-  async cycleThinkingLevel(): Promise<{ level: ThinkingLevel } | null> {
-    const response = await this.send({ type: "cycle_thinking_level" });
-    return this.getData(response);
-  }
-
-  /**
-   * Set steering mode.
-   */
-  async setSteeringMode(mode: "all" | "one-at-a-time"): Promise<void> {
-    await this.send({ type: "set_steering_mode", mode });
-  }
-
-  /**
-   * Set follow-up mode.
-   */
-  async setFollowUpMode(mode: "all" | "one-at-a-time"): Promise<void> {
-    await this.send({ type: "set_follow_up_mode", mode });
-  }
-
-  /**
-   * Compact session context.
-   */
-  async compact(customInstructions?: string): Promise<CompactionResult> {
-    const response = await this.send({ type: "compact", customInstructions });
-    return this.getData(response);
-  }
-
-  /**
-   * Set auto-compaction enabled/disabled.
-   */
-  async setAutoCompaction(enabled: boolean): Promise<void> {
-    await this.send({ type: "set_auto_compaction", enabled });
-  }
-
-  /**
-   * Set auto-retry enabled/disabled.
-   */
-  async setAutoRetry(enabled: boolean): Promise<void> {
-    await this.send({ type: "set_auto_retry", enabled });
-  }
-
-  /**
-   * Abort in-progress retry.
-   */
-  async abortRetry(): Promise<void> {
-    await this.send({ type: "abort_retry" });
-  }
-
-  /**
-   * Get session statistics.
-   */
-  async getSessionStats(): Promise<SessionStats> {
-    const response = await this.send({ type: "get_session_stats" });
-    return this.getData(response);
-  }
-
-  /**
-   * Export session to HTML.
-   */
-  async exportHtml(outputPath?: string): Promise<{ path: string }> {
-    const response = await this.send({ type: "export_html", outputPath });
-    return this.getData(response);
-  }
-
-  /**
    * Switch to a different session file.
    * @returns Object with `cancelled: true` if an extension cancelled the switch
    */
   async switchSession(sessionPath: string): Promise<{ cancelled: boolean }> {
-    const response = await this.send({ type: "switch_session", sessionPath });
+    const response = await this.send({ sessionPath, type: "switch_session" });
     return this.getData(response);
   }
-
-  /**
-   * Fork from a specific message.
-   * @returns Object with `text` (the message text) and `cancelled` (if extension cancelled)
-   */
-  async fork(entryId: string): Promise<{ text: string; cancelled: boolean }> {
-    const response = await this.send({ type: "fork", entryId });
-    return this.getData(response);
-  }
-
-  /**
-   * Get messages available for forking.
-   */
-  async getForkMessages(): Promise<Array<{ entryId: string; text: string }>> {
-    const response = await this.send({ type: "get_fork_messages" });
-    return this.getData<{ messages: Array<{ entryId: string; text: string }> }>(
-      response,
-    ).messages;
-  }
-
-  /**
-   * Get text of last assistant message.
-   */
-  async getLastAssistantText(): Promise<string | null> {
-    const response = await this.send({ type: "get_last_assistant_text" });
-    return this.getData<{ text: string | null }>(response).text;
-  }
-
-  /**
-   * Set the session display name.
-   */
-  async setSessionName(name: string): Promise<void> {
-    await this.send({ type: "set_session_name", name });
-  }
-
-  /**
-   * Get all messages in the session.
-   */
-  async getMessages(): Promise<AgentMessage[]> {
-    const response = await this.send({ type: "get_messages" });
-    return this.getData<{ messages: AgentMessage[] }>(response).messages;
-  }
-
-  /**
-   * Get available commands (extension commands, prompt templates, skills).
-   */
-  async getCommands(): Promise<RpcSlashCommand[]> {
-    const response = await this.send({ type: "get_commands" });
-    return this.getData<{ commands: RpcSlashCommand[] }>(response).commands;
-  }
-
-  // =========================================================================
-  // Helpers
-  // =========================================================================
 
   /**
    * Wait for agent to become idle (no streaming).
@@ -417,44 +455,26 @@ export class RpcClient {
     });
   }
 
-  /**
-   * Collect events until agent becomes idle.
-   */
-  collectEvents(timeout = 60000): Promise<AgentEvent[]> {
-    return new Promise((resolve, reject) => {
-      const events: AgentEvent[] = [];
-      const timer = setTimeout(() => {
-        unsubscribe();
-        reject(new Error(`Timeout collecting events. Stderr: ${this.stderr}`));
-      }, timeout);
-
-      const unsubscribe = this.onEvent((event) => {
-        events.push(event);
-        if (event.type === "agent_end") {
-          clearTimeout(timer);
-          unsubscribe();
-          resolve(events);
-        }
-      });
-    });
-  }
-
-  /**
-   * Send prompt and wait for completion, returning all events.
-   */
-  async promptAndWait(
-    message: string,
-    images?: ImageContent[],
-    timeout = 60000,
-  ): Promise<AgentEvent[]> {
-    const eventsPromise = this.collectEvents(timeout);
-    await this.prompt(message, images);
-    return eventsPromise;
-  }
-
   // =========================================================================
   // Internal
   // =========================================================================
+
+  private getData<T>(response: RpcResponse): T {
+    if (!response.success) {
+      const errorResponse = response as Extract<
+        RpcResponse,
+        { success: false }
+      >;
+      throw new Error(errorResponse.error);
+    }
+    // Type assertion: we trust response.data matches T based on the command sent.
+    // This is safe because each public method specifies the correct T for its command.
+    const successResponse = response as Extract<
+      RpcResponse,
+      { data: unknown; success: true; }
+    >;
+    return successResponse.data as T;
+  }
 
   private handleLine(line: string): void {
     try {
@@ -490,7 +510,7 @@ export class RpcClient {
     const fullCommand = { ...command, id } as RpcCommand;
 
     return new Promise((resolve, reject) => {
-      this.pendingRequests.set(id, { resolve, reject });
+      this.pendingRequests.set(id, { reject, resolve });
 
       const timeout = setTimeout(() => {
         this.pendingRequests.delete(id);
@@ -502,34 +522,17 @@ export class RpcClient {
       }, 30000);
 
       this.pendingRequests.set(id, {
-        resolve: (response) => {
-          clearTimeout(timeout);
-          resolve(response);
-        },
         reject: (error) => {
           clearTimeout(timeout);
           reject(error);
+        },
+        resolve: (response) => {
+          clearTimeout(timeout);
+          resolve(response);
         },
       });
 
       this.process!.stdin!.write(serializeJsonLine(fullCommand));
     });
-  }
-
-  private getData<T>(response: RpcResponse): T {
-    if (!response.success) {
-      const errorResponse = response as Extract<
-        RpcResponse,
-        { success: false }
-      >;
-      throw new Error(errorResponse.error);
-    }
-    // Type assertion: we trust response.data matches T based on the command sent.
-    // This is safe because each public method specifies the correct T for its command.
-    const successResponse = response as Extract<
-      RpcResponse,
-      { success: true; data: unknown }
-    >;
-    return successResponse.data as T;
   }
 }

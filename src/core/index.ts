@@ -3,6 +3,20 @@
  */
 
 export {
+  AgentSessionRuntime,
+  createAgentSessionRuntime,
+  type CreateAgentSessionRuntimeFactory,
+  type CreateAgentSessionRuntimeResult,
+} from "./agent-session-runtime.js";
+export {
+  type AgentSessionRuntimeDiagnostic,
+  type AgentSessionServices,
+  createAgentSessionFromServices,
+  type CreateAgentSessionFromServicesOptions,
+  createAgentSessionServices,
+  type CreateAgentSessionServicesOptions,
+} from "./agent-session-services.js";
+export {
   AgentSession,
   type AgentSessionConfig,
   type AgentSessionEvent,
@@ -11,20 +25,6 @@ export {
   type PromptOptions,
   type SessionStats,
 } from "./agent-session.js";
-export {
-  AgentSessionRuntime,
-  type CreateAgentSessionRuntimeFactory,
-  type CreateAgentSessionRuntimeResult,
-  createAgentSessionRuntime,
-} from "./agent-session-runtime.js";
-export {
-  type AgentSessionRuntimeDiagnostic,
-  type AgentSessionServices,
-  type CreateAgentSessionFromServicesOptions,
-  type CreateAgentSessionServicesOptions,
-  createAgentSessionFromServices,
-  createAgentSessionServices,
-} from "./agent-session-services.js";
 export type { CompactionResult } from "./compaction/index.js";
 export {
   createEventBus,

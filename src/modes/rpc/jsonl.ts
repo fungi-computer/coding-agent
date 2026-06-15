@@ -1,15 +1,6 @@
 import type { Readable } from "node:stream";
-import { StringDecoder } from "node:string_decoder";
 
-/**
- * Serialize a single strict JSONL record.
- *
- * Framing is LF-only. Payload strings may contain other Unicode separators such as
- * U+2028 and U+2029. Clients must split records on `\n` only.
- */
-export function serializeJsonLine(value: unknown): string {
-  return `${JSON.stringify(value)}\n`;
-}
+import { StringDecoder } from "node:string_decoder";
 
 /**
  * Attach an LF-only JSONL reader to a stream.
@@ -29,7 +20,7 @@ export function attachJsonlLineReader(
     onLine(line.endsWith("\r") ? line.slice(0, -1) : line);
   };
 
-  const onData = (chunk: string | Buffer) => {
+  const onData = (chunk: Buffer | string) => {
     buffer += typeof chunk === "string" ? chunk : decoder.write(chunk);
 
     while (true) {
@@ -58,4 +49,14 @@ export function attachJsonlLineReader(
     stream.off("data", onData);
     stream.off("end", onEnd);
   };
+}
+
+/**
+ * Serialize a single strict JSONL record.
+ *
+ * Framing is LF-only. Payload strings may contain other Unicode separators such as
+ * U+2028 and U+2029. Clients must split records on `\n` only.
+ */
+export function serializeJsonLine(value: unknown): string {
+  return `${JSON.stringify(value)}\n`;
 }

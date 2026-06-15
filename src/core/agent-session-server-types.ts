@@ -5,55 +5,16 @@
  * @module
  */
 
-import type { AgentMessage, ThinkingLevel } from "@shiit/agent-core";
 import type { Model } from "@mariozechner/pi-ai";
+import type { AgentMessage, ThinkingLevel } from "@shiit/agent-core";
+
+import type { ResourceDiagnostic } from "./diagnostics.js";
 import type { ContextUsage } from "./extensions/types.js";
 import type { BranchSummaryEntry, SessionEntry } from "./session-manager.js";
-import type { ResourceDiagnostic } from "./diagnostics.js";
 import type { SourceInfo } from "./source-info.js";
 
 // ============================================================================
 // Session Command (Client → Server)
-// ============================================================================
-
-/** Commands a client can send to the server */
-export type SessionCommand =
-  | { type: "prompt"; text: string }
-  | { type: "abort" }
-  | { type: "set_model"; modelId: string; provider?: string }
-  | { type: "set_thinking_level"; level: ThinkingLevel }
-  | { type: "set_tools"; toolNames: string[] }
-  | { type: "navigate_tree"; leafId: string }
-  | { type: "compact"; reason?: "manual" | "threshold" | "overflow" };
-
-// ============================================================================
-// Client Message (Client → Server, over WebSocket)
-// ============================================================================
-
-/** Raw messages from client over WebSocket */
-export type ClientMessage =
-  | { type: "command"; sessionId: string; command: SessionCommand }
-  | { type: "input"; sessionId: string; data: string }
-  | { type: "resize"; sessionId: string; cols: number; rows: number };
-
-// ============================================================================
-// Server Message (Server → Client, over WebSocket)
-// ============================================================================
-
-/** Messages from server to client over WebSocket */
-export type ServerMessage =
-  | { type: "welcome"; sessionId: string }
-  | { type: "snapshot"; sessionId: string; data: SessionSnapshot }
-  | {
-      type: "event";
-      sessionId: string;
-      sequenceId: number;
-      event: AgentSessionSyncEvent;
-    }
-  | { type: "error"; sessionId: string; message: string };
-
-// ============================================================================
-// AgentSessionSyncEvent (mirrors AgentSessionEvent for wire format)
 // ============================================================================
 
 /**
@@ -62,199 +23,183 @@ export type ServerMessage =
  */
 export type AgentSessionSyncEvent =
   // Lifecycle
-  | { type: "agent_start" }
-  | { type: "agent_end" }
-  | { type: "turn_start"; turnIndex: number }
   | {
-      type: "turn_end";
-      turnIndex: number;
-      message: AgentMessage;
-      toolResults: AgentMessage[];
+      aborted: boolean;
+      reason: "manual" | "overflow" | "threshold";
+      result?: unknown;
+      type: "compaction_end";
+      willRetry: boolean;
+    }
+  | { activeToolNames: readonly string[]; type: "tools_changed" }
+  | {
+      args: unknown;
+      toolCallId: string;
+      toolName: string;
+      type: "tool_execution_start";
+    }
+  | {
+      attempt: number;
+      delayMs: number;
+      errorMessage: string;
+      maxAttempts: number;
+      type: "auto_retry_start";
     }
 
   // Messages
-  | { type: "message_start"; message: AgentMessage; id: string }
+  | { attempt: number; success: boolean; type: "auto_retry_end" }
   | {
-      type: "message_update";
-      message: AgentMessage;
-      delta: string;
-      thinkingDelta?: string;
-      id: string;
+      availableLevels: readonly ThinkingLevel[];
+      level: ThinkingLevel;
+      type: "thinking_level_changed";
     }
-  | { type: "message_end"; message: AgentMessage; id: string }
+  | {
+      delta: string;
+      id: string;
+      message: AgentMessage;
+      thinkingDelta?: string;
+      type: "message_update";
+    }
 
   // Tools
   | {
-      type: "tool_execution_start";
-      toolCallId: string;
-      toolName: string;
-      args: unknown;
+      followUp: readonly string[];
+      steering: readonly string[];
+      type: "queue_update";
     }
-  | {
-      type: "tool_execution_update";
-      toolCallId: string;
-      partialResult: unknown;
-    }
-  | {
-      type: "tool_execution_end";
-      toolCallId: string;
-      result: unknown;
-      isError: boolean;
-    }
+  | { id: string; message: AgentMessage; type: "message_end" }
+  | { id: string; message: AgentMessage; type: "message_start" }
 
   // Queue
   | {
-      type: "queue_update";
-      steering: readonly string[];
-      followUp: readonly string[];
+      isError: boolean;
+      result: unknown;
+      toolCallId: string;
+      type: "tool_execution_end";
     }
 
   // Compaction
-  | { type: "compaction_start"; reason: "manual" | "threshold" | "overflow" }
+  | { label: string | undefined; targetId: string; type: "label_changed" }
   | {
-      type: "compaction_end";
-      reason: "manual" | "threshold" | "overflow";
-      result?: unknown;
-      aborted: boolean;
-      willRetry: boolean;
+      message: AgentMessage;
+      toolResults: AgentMessage[];
+      turnIndex: number;
+      type: "turn_end";
     }
 
   // Retry
   | {
-      type: "auto_retry_start";
-      attempt: number;
-      maxAttempts: number;
-      delayMs: number;
-      errorMessage: string;
+      model?: Model<any>;
+      previousModel?: Model<any>;
+      source: "cycle" | "restore" | "set";
+      type: "model_changed";
     }
-  | { type: "auto_retry_end"; success: boolean; attempt: number }
+  | {
+      newLeafId: null | string;
+      oldLeafId: null | string;
+      summaryEntry?: BranchSummaryEntry;
+      type: "tree_changed";
+    }
 
   // Session state changes (Phase 1 events)
   | {
-      type: "model_changed";
-      model?: Model<any>;
-      previousModel?: Model<any>;
-      source: "set" | "cycle" | "restore";
+      partialResult: unknown;
+      toolCallId: string;
+      type: "tool_execution_update";
     }
+  | { reason: "manual" | "overflow" | "threshold"; type: "compaction_start" }
+  | { resources: SessionResources; type: "resources_changed" }
+  | { sessionName?: string; type: "session_metadata_changed" }
+  | { turnIndex: number; type: "turn_start" }
+  | { type: "agent_end" }
+  | { type: "agent_start" }
+  | { cost?: number; type: "context_usage_changed"; usage?: ContextUsage };
+
+// ============================================================================
+// Client Message (Client → Server, over WebSocket)
+// ============================================================================
+
+export interface ClientConnection {
+  lastSequenceId: number;
+  sessionId?: string;
+}
+
+// ============================================================================
+// Server Message (Server → Client, over WebSocket)
+// ============================================================================
+
+/** Raw messages from client over WebSocket */
+export type ClientMessage =
+  | { cols: number; rows: number; sessionId: string; type: "resize" }
+  | { command: SessionCommand; sessionId: string; type: "command" }
+  | { data: string; sessionId: string; type: "input" };
+
+// ============================================================================
+// AgentSessionSyncEvent (mirrors AgentSessionEvent for wire format)
+// ============================================================================
+
+/** Events not tied to a specific session */
+export type GlobalServerEvent =
+  | { info: SessionListItem; sessionId: string; type: "session_created" }
+  | { info: SessionListItem; sessionId: string; type: "session_updated" }
+  | { name: string; sessionId: string; type: "session_renamed" }
   | {
-      type: "thinking_level_changed";
-      level: ThinkingLevel;
-      availableLevels: readonly ThinkingLevel[];
+      sessionId: string;
+      status: "busy" | "idle" | "retry";
+      type: "session_status_changed";
     }
-  | { type: "tools_changed"; activeToolNames: readonly string[] }
-  | {
-      type: "tree_changed";
-      oldLeafId: string | null;
-      newLeafId: string | null;
-      summaryEntry?: BranchSummaryEntry;
-    }
-  | { type: "session_metadata_changed"; sessionName?: string }
-  | { type: "label_changed"; targetId: string; label: string | undefined }
-  | { type: "context_usage_changed"; usage?: ContextUsage }
-  | { type: "resources_changed"; resources: SessionResources };
+  | { sessionId: string; type: "session_deleted" }
+  | { type: "server_connected" }
+  | { type: "server_shutdown" };
 
 // ============================================================================
 // Session Resources
 // ============================================================================
 
-export interface SessionResources {
-  extensions: Array<{ path: string; sourceInfo?: SourceInfo }>;
-  extensionErrors: Array<{ path: string; error: string }>;
-  skills: Array<{ name: string; filePath: string; sourceInfo?: SourceInfo }>;
-  skillDiagnostics: ResourceDiagnostic[];
-  prompts: Array<{ name: string; filePath: string; sourceInfo?: SourceInfo }>;
-  promptDiagnostics: ResourceDiagnostic[];
-  themes: Array<{ name: string; sourcePath?: string; sourceInfo?: SourceInfo }>;
-  themeDiagnostics: ResourceDiagnostic[];
-}
+/** Messages from server to client over WebSocket */
+export type ServerMessage =
+  | { data: SessionSnapshot; sessionId: string; type: "snapshot" }
+  | {
+      event: AgentSessionSyncEvent;
+      sequenceId: number;
+      sessionId: string;
+      type: "event";
+    }
+  | { message: string; sessionId: string; type: "error" }
+  | { sessionId: string; type: "welcome" };
 
 // ============================================================================
 // Session Snapshot (Full state for join/reconnect)
 // ============================================================================
 
-/**
- * Full session state for sending to clients on join or reconnect.
- * Contains all data needed to render the current session state.
- */
-export interface SessionSnapshot {
-  // Identity
-  sessionId: string;
-  cwd: string;
-  sessionName?: string;
-
-  // Tree position
-  leafId: string | null;
-  branchEntries: SessionEntry[];
-
-  // Model and thinking
-  model?: Model<any>;
-  thinkingLevel: ThinkingLevel;
-  availableThinkingLevels: readonly ThinkingLevel[];
-  activeToolNames: readonly string[];
-
-  // Queue
-  queue: {
-    steering: readonly string[];
-    followUp: readonly string[];
-  };
-
-  // Live/streaming state
-  agent: {
-    isStreaming: boolean;
-    currentMessage?: AgentMessage;
-    pendingToolCalls: Array<{
-      toolCallId: string;
-      toolName: string;
-      args: unknown;
-      partialResult?: unknown;
-    }>;
-  };
-
-  // Status
-  compaction?: {
-    active: boolean;
-    reason?: "manual" | "threshold" | "overflow";
-  };
-  retry?: {
-    active: boolean;
-    attempt?: number;
-    maxAttempts?: number;
-    delayMs?: number;
-    errorMessage?: string;
-  };
-
-  // Context usage
-  contextUsage?: ContextUsage;
-
-  // Resources
-  resources: SessionResources;
-}
+/** Commands a client can send to the server */
+export type SessionCommand =
+  | { leafId: string; type: "navigate_tree" }
+  | { level: ThinkingLevel; type: "set_thinking_level" }
+  | { modelId: string; provider?: string; type: "set_model" }
+  | { reason?: "manual" | "overflow" | "threshold"; type: "compact" }
+  | { text: string; type: "prompt" }
+  | { toolNames: string[]; type: "set_tools" }
+  | { type: "abort" };
 
 // ============================================================================
 // Global Server Types
 // ============================================================================
 
-/** Events not tied to a specific session */
-export type GlobalServerEvent =
-  | { type: "server_connected" }
-  | { type: "server_shutdown" }
-  | { type: "session_created"; sessionId: string; info: SessionListItem }
-  | { type: "session_updated"; sessionId: string; info: SessionListItem }
-  | { type: "session_deleted"; sessionId: string }
-  | { type: "session_renamed"; sessionId: string; name: string }
-  | {
-      type: "session_status_changed";
-      sessionId: string;
-      status: "idle" | "busy" | "retry";
-    };
+export interface SessionFactory {
+  closeSession(sessionId: string): Promise<void>;
+  createSession(options: {
+    cwd: string;
+    sessionId: string;
+  }): Promise<AgentSession>;
+}
 
 export interface SessionListItem {
-  id: string;
-  name?: string;
-  cwd: string;
   createdAt: number;
-  modifiedAt: number;
+  cwd: string;
+  id: string;
   messageCount: number;
+  modifiedAt: number;
+  name?: string;
 }
 
 // ============================================================================
@@ -263,19 +208,77 @@ export interface SessionListItem {
 
 import type { AgentSession } from "./agent-session.js";
 
-export interface SessionFactory {
-  createSession(options: {
-    sessionId: string;
-    cwd: string;
-  }): Promise<AgentSession>;
-  closeSession(sessionId: string): Promise<void>;
+export interface SessionResources {
+  extensionErrors: { error: string; path: string }[];
+  extensions: { path: string; sourceInfo?: SourceInfo }[];
+  promptDiagnostics: ResourceDiagnostic[];
+  prompts: { filePath: string; name: string; sourceInfo?: SourceInfo }[];
+  skillDiagnostics: ResourceDiagnostic[];
+  skills: { filePath: string; name: string; sourceInfo?: SourceInfo }[];
+  themeDiagnostics: ResourceDiagnostic[];
+  themes: { name: string; sourceInfo?: SourceInfo; sourcePath?: string }[];
 }
 
 // ============================================================================
 // Client Connection
 // ============================================================================
 
-export interface ClientConnection {
-  sessionId?: string;
-  lastSequenceId: number;
+/**
+ * Full session state for sending to clients on join or reconnect.
+ * Contains all data needed to render the current session state.
+ */
+export interface SessionSnapshot {
+  activeToolNames: readonly string[];
+  // Live/streaming state
+  agent: {
+    currentMessage?: AgentMessage;
+    isStreaming: boolean;
+    pendingToolCalls: {
+      args: unknown;
+      partialResult?: unknown;
+      toolCallId: string;
+      toolName: string;
+    }[];
+  };
+  availableThinkingLevels: readonly ThinkingLevel[];
+
+  branchEntries: SessionEntry[];
+  // Status
+  compaction?: {
+    active: boolean;
+    reason?: "manual" | "overflow" | "threshold";
+  };
+
+  // Context usage
+  contextUsage?: ContextUsage;
+  // Session cost (accumulated from assistant message usage)
+  cost?: number;
+  cwd: string;
+  // Tree position
+  leafId: null | string;
+  // Model and thinking
+  model?: Model<any>;
+
+  // Queue
+  queue: {
+    followUp: readonly string[];
+    steering: readonly string[];
+  };
+
+  // Resources
+  resources: SessionResources;
+
+  retry?: {
+    active: boolean;
+    attempt?: number;
+    delayMs?: number;
+    errorMessage?: string;
+    maxAttempts?: number;
+  };
+  // Identity
+  sessionId: string;
+
+  sessionName?: string;
+
+  thinkingLevel: ThinkingLevel;
 }

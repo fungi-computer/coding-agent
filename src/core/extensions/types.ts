@@ -3,117 +3,52 @@
  * All exports use 'any' to allow compilation without full implementation.
  */
 
-// Type exports
-export type ExtensionRunner = any;
-export type SessionStartEvent = any;
-export type LoadExtensionsResult = any;
-export type ExtensionRuntime = any;
-export type ExtensionFactory = any;
-export type Extension = any;
-export type ExtensionContext = any;
-export type ExtensionAPI = any;
-export type ExtensionEvent = any;
-export type ToolDefinition = any;
+export type AgentEndEvent = any;
+export type AgentStartEvent = any;
 export type AgentToolResult = any;
 export type AgentToolUpdateCallback = any;
-export type AgentStartEvent = any;
-export type AgentEndEvent = any;
-export type TurnStartEvent = any;
-export type TurnEndEvent = any;
-export type ToolCallEvent = any;
-export type ToolResultEvent = any;
-export type MessageStartEvent = any;
-export type MessageUpdateEvent = any;
-export type MessageEndEvent = any;
-export type SessionShutdownEvent = any;
-export type SessionCompactEvent = any;
-export type SessionBeforeCompactEvent = any;
-export type SessionBeforeCompactResult = any;
-export type ContextEvent = any;
-export type ContextEventResult = any;
+export type AppKeybinding = any;
+export type AppMode = any;
+export type AssistantMessage = any;
+export type BashToolCallEvent = any;
 export type BeforeAgentStartEvent = any;
 export type BeforeAgentStartEventResult = any;
 export type BeforeProviderRequestEvent = any;
 export type BeforeProviderRequestEventResult = any;
-export type ExtensionHandler = any;
-export type ToolCallEventResult = any;
-export type ToolResultEventResult = any;
-export type SessionBeforeSwitchEvent = any;
-export type SessionBeforeSwitchResult = any;
-export type SessionBeforeForkEvent = any;
-export type SessionBeforeForkResult = any;
-export type SessionBeforeTreeEvent = any;
-export type SessionBeforeTreeResult = any;
-export type SessionTreeEvent = any;
-export type InputEvent = any;
-export type InputEventResult = any;
-export type UserBashEvent = any;
-export type UserBashEventResult = any;
-export type ToolExecutionStartEvent = any;
-export type ToolExecutionUpdateEvent = any;
-export type ToolExecutionEndEvent = any;
-export type ModelSelectEvent = any;
-export type ExtensionError = any;
-export type ExtensionErrorListener = any;
-export type ShutdownHandler = any;
-export type ExtensionCommandContext = any;
-export type RegisteredCommand = any;
-export type ExtensionShortcut = any;
-export type ExtensionFlag = any;
-export type ExtensionUIContext = any;
-export type MessageRenderer = any;
-export type ToolRenderResultOptions = any;
-export type ExecOptions = any;
-export type ExecResult = any;
-export type InputSource = any;
-export type ContextUsage = any;
-export type ToolInfo = any;
-export type TreePreparation = any;
-export type ExtensionCommandContextActions = any;
-export type AppKeybinding = any;
-export type BashToolCallEvent = any;
 export type CompactOptions = any;
+export type ContextEvent = any;
+export type ContextEventResult = any;
+export type ContextUsage = any;
+export type CustomMessage = any;
 export type CustomToolCallEvent = any;
 export type EditToolCallEvent = any;
+export type ExecOptions = any;
+export type ExecResult = any;
+export type Extension = any;
 export type ExtensionActions = any;
+export type ExtensionAPI = any;
+export type ExtensionCommandContext = any;
+export type ExtensionCommandContextActions = any;
+export type ExtensionContext = any;
 export type ExtensionContextActions = any;
+export type ExtensionError = any;
+export type ExtensionErrorListener = any;
+export type ExtensionEvent = any;
+export type ExtensionFactory = any;
+export type ExtensionFlag = any;
+export type ExtensionHandler = any;
+// Type exports
+export type ExtensionRunner = any;
+export type ExtensionRuntime = any;
+export type ExtensionShortcut = any;
+export type ExtensionUIContext = any;
 export type ExtensionUIDialogOptions = any;
 export type ExtensionWidgetOptions = any;
 export type FindToolCallEvent = any;
 export type GrepToolCallEvent = any;
-export type KeybindingsManager = any;
-export type LsToolCallEvent = any;
-export type MessageRenderOptions = any;
-export type ProviderConfig = any;
-export type ProviderModelConfig = any;
-export type ReadToolCallEvent = any;
-export type RegisteredTool = any;
-export type ResourceCollision = any;
-export type ResourceDiagnostic = any;
-export type SessionBeforeCompactEventResult = any;
-export type SessionBeforeSwitchEventResult = any;
-export type SessionCompactEventResult = any;
-export type SessionEndEvent = any;
-export type SessionEntry = any;
-export type SessionForkEvent = any;
-export type SessionInfo = any;
-export type SessionPersistEvent = any;
-export type SessionResumeEvent = any;
-export type SessionStartEventResult = any;
-export type SessionSwitchEvent = any;
-export type SlashCommandInfo = any;
-export type SlashCommandSource = any;
-export type ToolRenderContext = any;
-export type WriteToolCallEvent = any;
-export type AppMode = any;
-export type AssistantMessage = any;
-export type CustomMessage = any;
-export type PendingToolCall = any;
-export type SessionStartOrigin = any;
-export type ResolvedCommand = any;
-export type SourceInfo = any;
-export type TerminalInputHandler = any;
-export type WidgetPlacement = any;
+export type InputEvent = any;
+export type InputEventResult = any;
+export type InputSource = any;
 export type isBashToolResult = any;
 export type isEditToolResult = any;
 export type isFindToolResult = any;
@@ -122,14 +57,79 @@ export type isLsToolResult = any;
 export type isReadToolResult = any;
 export type isToolCallEventType = any;
 export type isWriteToolResult = any;
+export type KeybindingsManager = any;
+export type LoadExtensionsResult = any;
+export type LsToolCallEvent = any;
+export type MessageEndEvent = any;
+export type MessageRenderer = any;
+export type MessageRenderOptions = any;
+export type MessageStartEvent = any;
+export type MessageUpdateEvent = any;
+export type ModelSelectEvent = any;
+export type PendingToolCall = any;
+export type ProviderConfig = any;
+export type ProviderModelConfig = any;
+export type ReadToolCallEvent = any;
+export type RegisteredCommand = any;
+export type RegisteredTool = any;
+export type ResolvedCommand = any;
+export type ResourceCollision = any;
+export type ResourceDiagnostic = any;
+export type SessionBeforeCompactEvent = any;
+export type SessionBeforeCompactEventResult = any;
+export type SessionBeforeCompactResult = any;
+export type SessionBeforeForkEvent = any;
+export type SessionBeforeForkResult = any;
+export type SessionBeforeSwitchEvent = any;
+export type SessionBeforeSwitchEventResult = any;
+export type SessionBeforeSwitchResult = any;
+export type SessionBeforeTreeEvent = any;
+export type SessionBeforeTreeResult = any;
+export type SessionCompactEvent = any;
+export type SessionCompactEventResult = any;
+export type SessionEndEvent = any;
+export type SessionEntry = any;
+export type SessionForkEvent = any;
+export type SessionInfo = any;
+export type SessionPersistEvent = any;
+export type SessionResumeEvent = any;
+export type SessionShutdownEvent = any;
+export type SessionStartEvent = any;
+export type SessionStartEventResult = any;
+export type SessionStartOrigin = any;
+export type SessionSwitchEvent = any;
+export type SessionTreeEvent = any;
+export type ShutdownHandler = any;
+export type SlashCommandInfo = any;
+export type SlashCommandSource = any;
+export type SourceInfo = any;
+export type TerminalInputHandler = any;
+export type ToolCallEvent = any;
+export type ToolCallEventResult = any;
+export type ToolDefinition = any;
+export type ToolExecutionEndEvent = any;
+export type ToolExecutionStartEvent = any;
+export type ToolExecutionUpdateEvent = any;
+export type ToolInfo = any;
+export type ToolRenderContext = any;
+export type ToolRenderResultOptions = any;
+export type ToolResultEvent = any;
+export type ToolResultEventResult = any;
+export type TreePreparation = any;
+export type TurnEndEvent = any;
+export type TurnStartEvent = any;
+export type UserBashEvent = any;
+export type UserBashEventResult = any;
+export type WidgetPlacement = any;
 export type wrapRegisteredTool = any;
+export type WriteToolCallEvent = any;
 
 // Function exports
 export const defineTool = (tool: any) => tool;
 export const createExtensionRuntime = () => ({});
 export const loadExtensions = (_paths?: any, _cwd?: any) => ({
+  errors: [] as { error: string; path: string; }[],
   extensions: [] as any[],
-  errors: [] as Array<{ path: string; error: string }>,
   runtime: createExtensionRuntime(),
 });
 export const loadExtensionFromFactory = (
@@ -148,11 +148,7 @@ export function wrapRegisteredTools(
     if (tool.definition?.invoke) {
       const def = tool.definition;
       return {
-        name: def.name,
-        label: def.label ?? def.name,
         description: def.description,
-        parameters: def.parameters,
-        prepareArguments: def.prepareArguments,
         execute: async (
           toolCallId: string,
           params: any,
@@ -160,38 +156,42 @@ export function wrapRegisteredTools(
           onUpdate?: any,
         ) => {
           const result = await def.invoke(params, {
-            toolCallId,
-            signal,
             onUpdate,
+            signal,
+            toolCallId,
           });
           const content =
             typeof result === "string"
-              ? [{ type: "text" as const, text: result }]
+              ? [{ text: result, type: "text" as const }]
               : result;
           return { content, details: {} };
         },
+        label: def.label ?? def.name,
+        name: def.name,
+        parameters: def.parameters,
+        prepareArguments: def.prepareArguments,
       };
     }
     if (tool.definition?.execute) {
       return {
-        name: tool.definition.name,
-        label: tool.definition.label ?? tool.definition.name,
         description: tool.definition.description,
+        execute: tool.definition.execute,
+        label: tool.definition.label ?? tool.definition.name,
+        name: tool.definition.name,
         parameters: tool.definition.parameters,
         prepareArguments: tool.definition.prepareArguments,
-        execute: tool.definition.execute,
       };
     }
     return {
-      name: tool.definition?.name,
-      label: tool.definition?.label ?? tool.definition?.name,
       description: tool.definition?.description,
-      parameters: tool.definition?.parameters,
       execute: tool.definition?.execute,
+      label: tool.definition?.label ?? tool.definition?.name,
+      name: tool.definition?.name,
+      parameters: tool.definition?.parameters,
     };
   });
 }
-export const discoverAndLoadExtensions = () => ({ extensions: [], errors: [] });
+export const discoverAndLoadExtensions = () => ({ errors: [], extensions: [] });
 
 // ExtensionRunner as both type and value
 export const ExtensionRunner = class {
@@ -203,11 +203,20 @@ export const ExtensionRunner = class {
     _modelRegistry?: unknown,
   ) {}
 
+  bindCommandContext(_context: any) {
+    // Stub - extensions not supported in cloud deployment
+  }
+
   bindCore(_core: any) {
     // Stub - extensions not supported in cloud deployment
   }
 
-  bindCommandContext(_context: any) {
+  createCommandContext() {
+    // Stub - extensions not supported in cloud deployment
+    return {};
+  }
+
+  dispose() {
     // Stub - extensions not supported in cloud deployment
   }
 
@@ -216,8 +225,32 @@ export const ExtensionRunner = class {
     return Promise.resolve();
   }
 
+  emitBeforeAgentStart(_event: any, _context: any) {
+    // Stub - extensions not supported in cloud deployment
+    return Promise.resolve({ skip: false });
+  }
+
+  emitBeforeProviderRequest(_payload: any) {
+    // Stub - extensions not supported in cloud deployment
+    return Promise.resolve({ skip: false });
+  }
+
+  emitContext(_messages: any) {
+    return Promise.resolve(_messages);
+  }
+
   emitError(_error: any) {
     // Stub - extensions not supported in cloud deployment
+  }
+
+  emitInput(_input: any, _context: any) {
+    // Stub - extensions not supported in cloud deployment
+    return Promise.resolve({ content: "" });
+  }
+
+  emitResourcesDiscover(_cwd: any, _runtime: any) {
+    // Stub - extensions not supported in cloud deployment
+    return Promise.resolve({ promptPaths: [], skillPaths: [], themePaths: [] });
   }
 
   emitToolCall(_toolCall: any, _context: any) {
@@ -230,53 +263,7 @@ export const ExtensionRunner = class {
     return Promise.resolve();
   }
 
-  emitBeforeProviderRequest(_payload: any) {
-    // Stub - extensions not supported in cloud deployment
-    return Promise.resolve({ skip: false });
-  }
-
-  emitContext(_messages: any) {
-    return Promise.resolve(_messages);
-  }
-
-  emitInput(_input: any, _context: any) {
-    // Stub - extensions not supported in cloud deployment
-    return Promise.resolve({ content: "" });
-  }
-
-  emitBeforeAgentStart(_event: any, _context: any) {
-    // Stub - extensions not supported in cloud deployment
-    return Promise.resolve({ skip: false });
-  }
-
-  emitResourcesDiscover(_cwd: any, _runtime: any) {
-    // Stub - extensions not supported in cloud deployment
-    return Promise.resolve({ skillPaths: [], promptPaths: [], themePaths: [] });
-  }
-
-  dispose() {
-    // Stub - extensions not supported in cloud deployment
-  }
-
-  setUIContext(_context: any) {
-    // Stub - extensions not supported in cloud deployment
-  }
-
-  hasHandlers(_eventType: string): boolean {
-    // Stub - extensions not supported in cloud deployment
-    return false;
-  }
-
-  getFlagValues(): Map<string, boolean | string> {
-    // Stub - extensions not supported in cloud deployment
-    return new Map();
-  }
-
-  onError(_listener: any) {
-    // Stub - extensions not supported in cloud deployment
-  }
-
-  getRegisteredCommands(): any[] {
+  getAllRegisteredTools(): any[] {
     // Stub - extensions not supported in cloud deployment
     return [];
   }
@@ -286,13 +273,26 @@ export const ExtensionRunner = class {
     return undefined;
   }
 
-  createCommandContext() {
+  getFlagValues(): Map<string, boolean | string> {
     // Stub - extensions not supported in cloud deployment
-    return {};
+    return new Map();
   }
 
-  getAllRegisteredTools(): any[] {
+  getRegisteredCommands(): any[] {
     // Stub - extensions not supported in cloud deployment
     return [];
+  }
+
+  hasHandlers(_eventType: string): boolean {
+    // Stub - extensions not supported in cloud deployment
+    return false;
+  }
+
+  onError(_listener: any) {
+    // Stub - extensions not supported in cloud deployment
+  }
+
+  setUIContext(_context: any) {
+    // Stub - extensions not supported in cloud deployment
   }
 } as any;

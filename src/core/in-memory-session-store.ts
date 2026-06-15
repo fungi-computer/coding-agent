@@ -3,50 +3,18 @@
  */
 
 import type { AgentMessage } from "@shiit/agent-core";
+
 import { nanoid } from "@shiit/id";
+
 import type { SessionEntry } from "./session-manager.js";
 import type {
-  SessionStore,
-  SessionListItem,
   SessionData,
+  SessionListItem,
+  SessionStore,
 } from "./session-store.js";
 
 export class InMemorySessionStore implements SessionStore {
-  private sessions: Map<string, SessionData> = new Map();
-
-  async createSession(cwd: string): Promise<{ sessionId: string }> {
-    const sessionId = nanoid();
-    const now = Date.now();
-    this.sessions.set(sessionId, {
-      sessionId,
-      cwd,
-      createdAt: now,
-      modifiedAt: now,
-      leafId: null,
-      entries: [],
-      messages: [],
-    });
-    return { sessionId };
-  }
-
-  async getSession(sessionId: string): Promise<SessionData | null> {
-    return this.sessions.get(sessionId) ?? null;
-  }
-
-  async deleteSession(sessionId: string): Promise<void> {
-    this.sessions.delete(sessionId);
-  }
-
-  async listSessions(): Promise<SessionListItem[]> {
-    return Array.from(this.sessions.values()).map((s) => ({
-      id: s.sessionId,
-      name: s.name,
-      cwd: s.cwd,
-      createdAt: s.createdAt,
-      modifiedAt: s.modifiedAt,
-      messageCount: s.messages.length,
-    }));
-  }
+  private sessions = new Map<string, SessionData>();
 
   async appendEntry(sessionId: string, entry: SessionEntry): Promise<void> {
     const session = this.sessions.get(sessionId);
@@ -54,10 +22,6 @@ export class InMemorySessionStore implements SessionStore {
       session.entries.push(entry);
       session.modifiedAt = Date.now();
     }
-  }
-
-  async getEntries(sessionId: string): Promise<SessionEntry[]> {
-    return this.sessions.get(sessionId)?.entries ?? [];
   }
 
   async appendMessage(sessionId: string, message: AgentMessage): Promise<void> {
@@ -68,16 +32,50 @@ export class InMemorySessionStore implements SessionStore {
     }
   }
 
+  clear(): void {
+    this.sessions.clear();
+  }
+
+  async createSession(cwd: string): Promise<{ sessionId: string }> {
+    const sessionId = nanoid();
+    const now = Date.now();
+    this.sessions.set(sessionId, {
+      createdAt: now,
+      cwd,
+      entries: [],
+      leafId: null,
+      messages: [],
+      modifiedAt: now,
+      sessionId,
+    });
+    return { sessionId };
+  }
+
+  async deleteSession(sessionId: string): Promise<void> {
+    this.sessions.delete(sessionId);
+  }
+
+  async getEntries(sessionId: string): Promise<SessionEntry[]> {
+    return this.sessions.get(sessionId)?.entries ?? [];
+  }
+
   async getMessages(sessionId: string): Promise<AgentMessage[]> {
     return this.sessions.get(sessionId)?.messages ?? [];
   }
 
-  async setLeaf(sessionId: string, leafId: string): Promise<void> {
-    const session = this.sessions.get(sessionId);
-    if (session) {
-      session.leafId = leafId;
-      session.modifiedAt = Date.now();
-    }
+  async getSession(sessionId: string): Promise<null | SessionData> {
+    return this.sessions.get(sessionId) ?? null;
+  }
+
+  async listSessions(): Promise<SessionListItem[]> {
+    return Array.from(this.sessions.values()).map((s) => ({
+      createdAt: s.createdAt,
+      cwd: s.cwd,
+      id: s.sessionId,
+      messageCount: s.messages.length,
+      modifiedAt: s.modifiedAt,
+      name: s.name,
+    }));
   }
 
   async renameSession(sessionId: string, name: string): Promise<void> {
@@ -88,7 +86,11 @@ export class InMemorySessionStore implements SessionStore {
     }
   }
 
-  clear(): void {
-    this.sessions.clear();
+  async setLeaf(sessionId: string, leafId: string): Promise<void> {
+    const session = this.sessions.get(sessionId);
+    if (session) {
+      session.leafId = leafId;
+      session.modifiedAt = Date.now();
+    }
   }
 }

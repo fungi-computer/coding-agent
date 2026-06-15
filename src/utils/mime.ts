@@ -1,10 +1,10 @@
-import { open } from "node:fs/promises";
 import { fileTypeFromBuffer } from "file-type";
+import { open } from "node:fs/promises";
 
 const IMAGE_MIME_TYPES = new Set([
+  "image/gif",
   "image/jpeg",
   "image/png",
-  "image/gif",
   "image/webp",
 ]);
 
@@ -12,7 +12,7 @@ const FILE_TYPE_SNIFF_BYTES = 4100;
 
 export async function detectSupportedImageMimeTypeFromFile(
   filePath: string,
-): Promise<string | null> {
+): Promise<null | string> {
   const fileHandle = await open(filePath, "r");
   try {
     const buffer = Buffer.alloc(FILE_TYPE_SNIFF_BYTES);

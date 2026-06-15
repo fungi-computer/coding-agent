@@ -10,20 +10,23 @@ export type PhotonImageType = any;
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export const SamplingFilter: any = {
+  CatmullRom: 4,
   Lanczos3: 0,
   Lanczos5: 1,
-  Triangle: 2,
   Mitchell: 3,
-  CatmullRom: 4,
   Nearest: 5,
+  Triangle: 2,
 };
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
+ 
 export class PhotonImage {
   constructor(_dst: Uint8Array, _height: number, _width: number) {
     throw new Error("PhotonImage is not supported in Workers");
   }
   static new_from_byteslice(_bytes: Uint8Array): PhotonImage {
+    throw new Error("PhotonImage is not supported in Workers");
+  }
+  free(): void {
     throw new Error("PhotonImage is not supported in Workers");
   }
   get_bytes(): Uint8Array {
@@ -32,13 +35,10 @@ export class PhotonImage {
   get_bytes_jpeg(_quality: number): Uint8Array {
     throw new Error("PhotonImage is not supported in Workers");
   }
-  get_width(): number {
-    throw new Error("PhotonImage is not supported in Workers");
-  }
   get_height(): number {
     throw new Error("PhotonImage is not supported in Workers");
   }
-  free(): void {
+  get_width(): number {
     throw new Error("PhotonImage is not supported in Workers");
   }
 }
