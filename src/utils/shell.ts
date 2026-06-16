@@ -5,7 +5,7 @@ import { delimiter } from "node:path";
 import { getBinDir, getSettingsPath } from "../config.js";
 import { SettingsManager } from "../core/settings-manager.js";
 
-let cachedShellConfig: { args: string[]; shell: string; } | null = null;
+let cachedShellConfig: { args: string[]; shell: string } | null = null;
 
 /**
  * Get shell configuration based on platform.
@@ -14,7 +14,7 @@ let cachedShellConfig: { args: string[]; shell: string; } | null = null;
  * 2. On Windows: Git Bash in known locations, then bash on PATH
  * 3. On Unix: /bin/bash, then bash on PATH, then fallback to sh
  */
-export function getShellConfig(): { args: string[]; shell: string; } {
+export function getShellConfig(): { args: string[]; shell: string } {
   if (cachedShellConfig) {
     return cachedShellConfig;
   }

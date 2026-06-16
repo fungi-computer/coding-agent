@@ -40,9 +40,9 @@ export interface DefaultResourceLoaderOptions {
   additionalThemePaths?: string[];
   agentDir?: string;
   agentsFilesOverride?: (base: {
-    agentsFiles: { content: string; path: string; }[];
+    agentsFiles: { content: string; path: string }[];
   }) => {
-    agentsFiles: { content: string; path: string; }[];
+    agentsFiles: { content: string; path: string }[];
   };
   appendSystemPrompt?: string;
   appendSystemPromptOverride?: (base: string[]) => string[];
@@ -80,23 +80,23 @@ export interface DefaultResourceLoaderOptions {
 }
 
 export interface ResourceExtensionPaths {
-  promptPaths?: { metadata: PathMetadata; path: string; }[];
-  skillPaths?: { metadata: PathMetadata; path: string; }[];
-  themePaths?: { metadata: PathMetadata; path: string; }[];
+  promptPaths?: { metadata: PathMetadata; path: string }[];
+  skillPaths?: { metadata: PathMetadata; path: string }[];
+  themePaths?: { metadata: PathMetadata; path: string }[];
 }
 
 export interface ResourceLoader {
   extendResources(paths: ResourceExtensionPaths): void;
-  getAgentsFiles(): { agentsFiles: { content: string; path: string; }[] };
+  getAgentsFiles(): { agentsFiles: { content: string; path: string }[] };
   getAppendSystemPrompt(): string[];
   getExtensions(): LoadExtensionsResult;
   getPrompts(): {
     diagnostics: ResourceDiagnostic[];
     prompts: PromptTemplate[];
   };
-  getSkills(): { diagnostics: ResourceDiagnostic[]; skills: Skill[]; };
+  getSkills(): { diagnostics: ResourceDiagnostic[]; skills: Skill[] };
   getSystemPrompt(): string | undefined;
-  getThemes(): { diagnostics: ResourceDiagnostic[]; themes: Theme[]; };
+  getThemes(): { diagnostics: ResourceDiagnostic[]; themes: Theme[] };
   reload(): Promise<void>;
 }
 
@@ -106,11 +106,11 @@ export class DefaultResourceLoader implements ResourceLoader {
   private additionalSkillPaths: string[];
   private additionalThemePaths: string[];
   private agentDir: string;
-  private agentsFiles: { content: string; path: string; }[];
+  private agentsFiles: { content: string; path: string }[];
   private agentsFilesOverride?: (base: {
-    agentsFiles: { content: string; path: string; }[];
+    agentsFiles: { content: string; path: string }[];
   }) => {
-    agentsFiles: { content: string; path: string; }[];
+    agentsFiles: { content: string; path: string }[];
   };
   private appendSystemPrompt: string[];
   private appendSystemPromptOverride?: (base: string[]) => string[];
@@ -268,7 +268,7 @@ export class DefaultResourceLoader implements ResourceLoader {
     }
   }
 
-  getAgentsFiles(): { agentsFiles: { content: string; path: string; }[] } {
+  getAgentsFiles(): { agentsFiles: { content: string; path: string }[] } {
     return { agentsFiles: this.agentsFiles };
   }
 
@@ -287,7 +287,7 @@ export class DefaultResourceLoader implements ResourceLoader {
     return { diagnostics: this.promptDiagnostics, prompts: this.prompts };
   }
 
-  getSkills(): { diagnostics: ResourceDiagnostic[]; skills: Skill[]; } {
+  getSkills(): { diagnostics: ResourceDiagnostic[]; skills: Skill[] } {
     return { diagnostics: this.skillDiagnostics, skills: this.skills };
   }
 
@@ -295,7 +295,7 @@ export class DefaultResourceLoader implements ResourceLoader {
     return this.systemPrompt;
   }
 
-  getThemes(): { diagnostics: ResourceDiagnostic[]; themes: Theme[]; } {
+  getThemes(): { diagnostics: ResourceDiagnostic[]; themes: Theme[] } {
     return { diagnostics: this.themeDiagnostics, themes: this.themes };
   }
 
@@ -321,7 +321,7 @@ export class DefaultResourceLoader implements ResourceLoader {
         metadata: PathMetadata;
         path: string;
       }[],
-    ): { enabled: boolean; metadata: PathMetadata; path: string; }[] => {
+    ): { enabled: boolean; metadata: PathMetadata; path: string }[] => {
       for (const r of resources) {
         if (!metadataByPath.has(r.path)) {
           metadataByPath.set(r.path, r.metadata);
@@ -610,8 +610,8 @@ export class DefaultResourceLoader implements ResourceLoader {
 
   private detectExtensionConflicts(
     extensions: Extension[],
-  ): { message: string; path: string; }[] {
-    const conflicts: { message: string; path: string; }[] = [];
+  ): { message: string; path: string }[] {
+    const conflicts: { message: string; path: string }[] = [];
 
     // Track which extension registered each tool and flag
     const toolOwners = new Map<string, string>();
@@ -795,11 +795,11 @@ export class DefaultResourceLoader implements ResourceLoader {
   }
 
   private async loadExtensionFactories(runtime: ExtensionRuntime): Promise<{
-    errors: { error: string; path: string; }[];
+    errors: { error: string; path: string }[];
     extensions: Extension[];
   }> {
     const extensions: Extension[] = [];
-    const errors: { error: string; path: string; }[] = [];
+    const errors: { error: string; path: string }[] = [];
 
     for (const [index, factory] of this.extensionFactories.entries()) {
       const extensionPath = `<inline:${index + 1}>`;
@@ -941,8 +941,8 @@ export class DefaultResourceLoader implements ResourceLoader {
   }
 
   private normalizeExtensionPaths(
-    entries: { metadata: PathMetadata; path: string; }[],
-  ): { metadata: PathMetadata; path: string; }[] {
+    entries: { metadata: PathMetadata; path: string }[],
+  ): { metadata: PathMetadata; path: string }[] {
     return entries.map((entry) => ({
       metadata: entry.metadata,
       path: this.resolveResourcePath(entry.path),
@@ -1002,7 +1002,7 @@ export class DefaultResourceLoader implements ResourceLoader {
     skillPaths: string[],
     metadataByPath?: Map<string, PathMetadata>,
   ): void {
-    let skillsResult: { diagnostics: ResourceDiagnostic[]; skills: Skill[]; };
+    let skillsResult: { diagnostics: ResourceDiagnostic[]; skills: Skill[] };
     if (this.noSkills && skillPaths.length === 0) {
       skillsResult = { diagnostics: [], skills: [] };
     } else {
@@ -1034,7 +1034,7 @@ export class DefaultResourceLoader implements ResourceLoader {
     themePaths: string[],
     metadataByPath?: Map<string, PathMetadata>,
   ): void {
-    let themesResult: { diagnostics: ResourceDiagnostic[]; themes: Theme[]; };
+    let themesResult: { diagnostics: ResourceDiagnostic[]; themes: Theme[] };
     if (this.noThemes && themePaths.length === 0) {
       themesResult = { diagnostics: [], themes: [] };
     } else {
@@ -1067,7 +1067,7 @@ export class DefaultResourceLoader implements ResourceLoader {
 
 function loadContextFileFromDir(
   dir: string,
-): { content: string; path: string; } | null {
+): { content: string; path: string } | null {
   const candidates = ["AGENTS.md", "CLAUDE.md"];
   for (const filename of candidates) {
     const filePath = join(dir, filename);
@@ -1088,12 +1088,12 @@ function loadContextFileFromDir(
 }
 
 function loadProjectContextFiles(
-  options: { agentDir?: string; cwd?: string; } = {},
-): { content: string; path: string; }[] {
+  options: { agentDir?: string; cwd?: string } = {},
+): { content: string; path: string }[] {
   const resolvedCwd = options.cwd ?? process.cwd();
   const resolvedAgentDir = options.agentDir ?? getAgentDir();
 
-  const contextFiles: { content: string; path: string; }[] = [];
+  const contextFiles: { content: string; path: string }[] = [];
   const seenPaths = new Set<string>();
 
   const globalContext = loadContextFileFromDir(resolvedAgentDir);
@@ -1102,7 +1102,7 @@ function loadProjectContextFiles(
     seenPaths.add(globalContext.path);
   }
 
-  const ancestorContextFiles: { content: string; path: string; }[] = [];
+  const ancestorContextFiles: { content: string; path: string }[] = [];
 
   let currentDir = resolvedCwd;
   const root = resolve("/");

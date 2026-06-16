@@ -257,7 +257,7 @@ export function estimateTokens(message: AgentMessage): number {
     }
     case "user": {
       const content = (
-        message as { content: { text?: string; type: string; }[] | string }
+        message as { content: { text?: string; type: string }[] | string }
       ).content;
       if (typeof content === "string") {
         chars = content.length;
@@ -488,7 +488,7 @@ function getAssistantUsage(msg: AgentMessage): undefined | Usage {
 
 function getLastAssistantUsageInfo(
   messages: AgentMessage[],
-): { index: number; usage: Usage; } | undefined {
+): { index: number; usage: Usage } | undefined {
   for (let i = messages.length - 1; i >= 0; i--) {
     const usage = getAssistantUsage(messages[i]);
     if (usage) return { index: i, usage };
@@ -658,7 +658,7 @@ export async function generateSummary(
   }
 
   const textContent = response.content
-    .filter((c): c is { text: string; type: "text"; } => c.type === "text")
+    .filter((c): c is { text: string; type: "text" } => c.type === "text")
     .map((c) => c.text)
     .join("\n");
 
@@ -910,7 +910,7 @@ async function generateTurnPrefixSummary(
   }
 
   return response.content
-    .filter((c): c is { text: string; type: "text"; } => c.type === "text")
+    .filter((c): c is { text: string; type: "text" } => c.type === "text")
     .map((c) => c.text)
     .join("\n");
 }

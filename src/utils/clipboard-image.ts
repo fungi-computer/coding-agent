@@ -299,7 +299,7 @@ function runCommand(
     maxBufferBytes?: number;
     timeoutMs?: number;
   },
-): { ok: boolean; stdout: Buffer; } {
+): { ok: boolean; stdout: Buffer } {
   const timeoutMs = options?.timeoutMs ?? DEFAULT_READ_TIMEOUT_MS;
   const maxBufferBytes = options?.maxBufferBytes ?? DEFAULT_MAX_BUFFER_BYTES;
 

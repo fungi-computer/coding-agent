@@ -128,7 +128,7 @@ export type WriteToolCallEvent = any;
 export const defineTool = (tool: any) => tool;
 export const createExtensionRuntime = () => ({});
 export const loadExtensions = (_paths?: any, _cwd?: any) => ({
-  errors: [] as { error: string; path: string; }[],
+  errors: [] as { error: string; path: string }[],
   extensions: [] as any[],
   runtime: createExtensionRuntime(),
 });

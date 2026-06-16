@@ -322,7 +322,7 @@ function escapeXml(str: string): string {
 function loadSkillFromFile(
   filePath: string,
   source: string,
-): { diagnostics: ResourceDiagnostic[]; skill: null | Skill; } {
+): { diagnostics: ResourceDiagnostic[]; skill: null | Skill } {
   const diagnostics: ResourceDiagnostic[] = [];
 
   try {

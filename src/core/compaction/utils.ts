@@ -117,7 +117,7 @@ export function serializeConversation(messages: Message[]): string {
           ? msg.content
           : msg.content
               .filter(
-                (c): c is { text: string; type: "text"; } => c.type === "text",
+                (c): c is { text: string; type: "text" } => c.type === "text",
               )
               .map((c) => c.text)
               .join("");
@@ -152,7 +152,7 @@ export function serializeConversation(messages: Message[]): string {
       }
     } else if (msg.role === "toolResult") {
       const content = msg.content
-        .filter((c): c is { text: string; type: "text"; } => c.type === "text")
+        .filter((c): c is { text: string; type: "text" } => c.type === "text")
         .map((c) => c.text)
         .join("");
       if (content) {

@@ -10,7 +10,7 @@ const normalizeNewlines = (value: string): string =>
 
 const extractFrontmatter = (
   content: string,
-): { body: string; yamlString: null | string; } => {
+): { body: string; yamlString: null | string } => {
   const normalized = normalizeNewlines(content);
 
   if (!normalized.startsWith("---")) {

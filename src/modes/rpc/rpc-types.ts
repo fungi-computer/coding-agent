@@ -18,10 +18,10 @@ import type { SourceInfo } from "../../core/source-info.js";
 
 export type RpcCommand =
   // Prompting
-  | { customInstructions?: string; id?: string; type: "compact"; }
-  | { enabled: boolean; id?: string; type: "set_auto_compaction"; }
-  | { enabled: boolean; id?: string; type: "set_auto_retry"; }
-  | { entryId: string; id?: string; type: "fork"; }
+  | { customInstructions?: string; id?: string; type: "compact" }
+  | { enabled: boolean; id?: string; type: "set_auto_compaction" }
+  | { enabled: boolean; id?: string; type: "set_auto_retry" }
+  | { entryId: string; id?: string; type: "fork" }
   | {
       id?: string;
       images?: ImageContent[];
@@ -31,24 +31,24 @@ export type RpcCommand =
     }
 
   // State
-  | { id?: string; images?: ImageContent[]; message: string; type: "follow_up"; }
+  | { id?: string; images?: ImageContent[]; message: string; type: "follow_up" }
 
   // Model
-  | { id?: string; images?: ImageContent[]; message: string; type: "steer"; }
-  | { id?: string; level: ThinkingLevel; type: "set_thinking_level"; }
-  | { id?: string; mode: "all" | "one-at-a-time"; type: "set_follow_up_mode"; }
+  | { id?: string; images?: ImageContent[]; message: string; type: "steer" }
+  | { id?: string; level: ThinkingLevel; type: "set_thinking_level" }
+  | { id?: string; mode: "all" | "one-at-a-time"; type: "set_follow_up_mode" }
 
   // Thinking
-  | { id?: string; mode: "all" | "one-at-a-time"; type: "set_steering_mode"; }
-  | { id?: string; modelId: string; provider: string; type: "set_model"; }
+  | { id?: string; mode: "all" | "one-at-a-time"; type: "set_steering_mode" }
+  | { id?: string; modelId: string; provider: string; type: "set_model" }
 
   // Queue modes
-  | { id?: string; name: string; type: "set_session_name"; }
-  | { id?: string; outputPath?: string; type: "export_html"; }
+  | { id?: string; name: string; type: "set_session_name" }
+  | { id?: string; outputPath?: string; type: "export_html" }
 
   // Compaction
-  | { id?: string; parentSession?: string; type: "new_session"; }
-  | { id?: string; sessionPath: string; type: "switch_session"; }
+  | { id?: string; parentSession?: string; type: "new_session" }
+  | { id?: string; sessionPath: string; type: "switch_session" }
 
   // Retry
   | { id?: string; type: "abort_retry" }
@@ -153,8 +153,8 @@ export type RpcExtensionUIRequest =
 
 /** Response to an extension UI request */
 export type RpcExtensionUIResponse =
-  | { cancelled: true; id: string; type: "extension_ui_response"; }
-  | { confirmed: boolean; id: string; type: "extension_ui_response"; }
+  | { cancelled: true; id: string; type: "extension_ui_response" }
+  | { confirmed: boolean; id: string; type: "extension_ui_response" }
   | { id: string; type: "extension_ui_response"; value: string };
 
 // ============================================================================
@@ -164,8 +164,8 @@ export type RpcExtensionUIResponse =
 // Success responses with data
 export type RpcResponse =
   // Prompting (async - events follow)
-  | { command: "abort_retry"; id?: string; success: true; type: "response"; }
-  | { command: "abort"; id?: string; success: true; type: "response"; }
+  | { command: "abort_retry"; id?: string; success: true; type: "response" }
+  | { command: "abort"; id?: string; success: true; type: "response" }
   | {
       command: "compact";
       data: CompactionResult;
@@ -202,10 +202,10 @@ export type RpcResponse =
     }
 
   // Model
-  | { command: "follow_up"; id?: string; success: true; type: "response"; }
+  | { command: "follow_up"; id?: string; success: true; type: "response" }
   | {
       command: "fork";
-      data: { cancelled: boolean; text: string; };
+      data: { cancelled: boolean; text: string };
       id?: string;
       success: true;
       type: "response";
@@ -274,7 +274,7 @@ export type RpcResponse =
       success: true;
       type: "response";
     }
-  | { command: "prompt"; id?: string; success: true; type: "response"; }
+  | { command: "prompt"; id?: string; success: true; type: "response" }
 
   // Session
   | {
@@ -283,7 +283,7 @@ export type RpcResponse =
       success: true;
       type: "response";
     }
-  | { command: "set_auto_retry"; id?: string; success: true; type: "response"; }
+  | { command: "set_auto_retry"; id?: string; success: true; type: "response" }
   | {
       command: "set_follow_up_mode";
       id?: string;
@@ -317,7 +317,7 @@ export type RpcResponse =
     }
 
   // Messages
-  | { command: "steer"; id?: string; success: true; type: "response"; }
+  | { command: "steer"; id?: string; success: true; type: "response" }
 
   // Commands
   | {

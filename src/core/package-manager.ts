@@ -136,10 +136,10 @@ interface PiManifest {
 }
 
 interface ResourceAccumulator {
-  extensions: Map<string, { enabled: boolean; metadata: PathMetadata; }>;
-  prompts: Map<string, { enabled: boolean; metadata: PathMetadata; }>;
-  skills: Map<string, { enabled: boolean; metadata: PathMetadata; }>;
-  themes: Map<string, { enabled: boolean; metadata: PathMetadata; }>;
+  extensions: Map<string, { enabled: boolean; metadata: PathMetadata }>;
+  prompts: Map<string, { enabled: boolean; metadata: PathMetadata }>;
+  skills: Map<string, { enabled: boolean; metadata: PathMetadata }>;
+  themes: Map<string, { enabled: boolean; metadata: PathMetadata }>;
 }
 
 type ResourceType = "extensions" | "prompts" | "skills" | "themes";
@@ -707,7 +707,7 @@ export class DefaultPackageManager implements PackageManager {
     entries: string[] | undefined,
     root: string,
     resourceType: ResourceType,
-    target: Map<string, { enabled: boolean; metadata: PathMetadata; }>,
+    target: Map<string, { enabled: boolean; metadata: PathMetadata }>,
     metadata: PathMetadata,
   ): void {
     if (!entries) return;
@@ -728,7 +728,7 @@ export class DefaultPackageManager implements PackageManager {
   }
 
   private addResource(
-    map: Map<string, { enabled: boolean; metadata: PathMetadata; }>,
+    map: Map<string, { enabled: boolean; metadata: PathMetadata }>,
     path: string,
     metadata: PathMetadata,
     enabled: boolean,
@@ -743,7 +743,7 @@ export class DefaultPackageManager implements PackageManager {
     packageRoot: string,
     userPatterns: string[],
     resourceType: ResourceType,
-    target: Map<string, { enabled: boolean; metadata: PathMetadata; }>,
+    target: Map<string, { enabled: boolean; metadata: PathMetadata }>,
     metadata: PathMetadata,
   ): void {
     const { allFiles } = this.collectManifestFiles(packageRoot, resourceType);
@@ -782,7 +782,7 @@ export class DefaultPackageManager implements PackageManager {
   private collectDefaultResources(
     packageRoot: string,
     resourceType: ResourceType,
-    target: Map<string, { enabled: boolean; metadata: PathMetadata; }>,
+    target: Map<string, { enabled: boolean; metadata: PathMetadata }>,
     metadata: PathMetadata,
   ): void {
     const manifest = this.readPiManifest(packageRoot);
@@ -1125,7 +1125,7 @@ export class DefaultPackageManager implements PackageManager {
 
   private async getLocalGitUpdateTarget(
     installedPath: string,
-  ): Promise<{ fetchArgs: string[]; head: string; ref: string; }> {
+  ): Promise<{ fetchArgs: string[]; head: string; ref: string }> {
     try {
       const upstream = await this.runCommandCapture(
         "git",
@@ -1212,7 +1212,7 @@ export class DefaultPackageManager implements PackageManager {
     }
   }
 
-  private getNpmCommand(): { args: string[]; command: string; } {
+  private getNpmCommand(): { args: string[]; command: string } {
     const configuredCommand = this.settingsManager.getNpmCommand();
     if (!configuredCommand || configuredCommand.length === 0) {
       return { args: [], command: "npm" };
@@ -1333,7 +1333,7 @@ export class DefaultPackageManager implements PackageManager {
   private getTargetMap(
     accumulator: ResourceAccumulator,
     resourceType: ResourceType,
-  ): Map<string, { enabled: boolean; metadata: PathMetadata; }> {
+  ): Map<string, { enabled: boolean; metadata: PathMetadata }> {
     switch (resourceType) {
       case "extensions":
         return accumulator.extensions;
@@ -1605,7 +1605,7 @@ export class DefaultPackageManager implements PackageManager {
   private resolveLocalEntries(
     entries: string[],
     resourceType: ResourceType,
-    target: Map<string, { enabled: boolean; metadata: PathMetadata; }>,
+    target: Map<string, { enabled: boolean; metadata: PathMetadata }>,
     metadata: PathMetadata,
     baseDir: string,
   ): void {
@@ -1927,7 +1927,7 @@ export class DefaultPackageManager implements PackageManager {
 
   private toResolvedPaths(accumulator: ResourceAccumulator): ResolvedPaths {
     const toResolved = (
-      entries: Map<string, { enabled: boolean; metadata: PathMetadata; }>,
+      entries: Map<string, { enabled: boolean; metadata: PathMetadata }>,
     ): ResolvedResource[] => {
       const resolved = Array.from(entries.entries()).map(
         ([path, { enabled, metadata }]) => ({

@@ -22,7 +22,7 @@ const createTransport = () => {
   };
 };
 
-const testSnapshot = (overrides?: { cwd?: string; sessionId?: string; }) => ({
+const testSnapshot = (overrides?: { cwd?: string; sessionId?: string }) => ({
   activeToolNames: ["read", "bash"] as const,
   agent: { isStreaming: false, pendingToolCalls: [] },
   availableThinkingLevels: ["off", "low", "medium", "high"] as const,

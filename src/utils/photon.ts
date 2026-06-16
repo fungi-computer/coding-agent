@@ -18,7 +18,6 @@ export const SamplingFilter: any = {
   Triangle: 2,
 };
 
- 
 export class PhotonImage {
   constructor(_dst: Uint8Array, _height: number, _width: number) {
     throw new Error("PhotonImage is not supported in Workers");

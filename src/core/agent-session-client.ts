@@ -14,7 +14,7 @@ export interface ClientTransport {
   disconnect(): Promise<void>;
   onClose(handler: () => void): void;
   onMessage(handler: (message: any) => void): void;
-  send(message: { [key: string]: any; type: string; }): void;
+  send(message: { [key: string]: any; type: string }): void;
 }
 
 const GLOBAL_EVENT_TYPES = new Set([

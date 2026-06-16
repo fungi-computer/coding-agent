@@ -370,7 +370,7 @@ export async function generateBranchSummary(
   }
 
   let summary = response.content
-    .filter((c): c is { text: string; type: "text"; } => c.type === "text")
+    .filter((c): c is { text: string; type: "text" } => c.type === "text")
     .map((c) => c.text)
     .join("\n");
 

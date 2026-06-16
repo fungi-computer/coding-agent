@@ -363,7 +363,7 @@ export async function createAgentSessionRuntime(
 }
 
 function extractUserMessageText(
-  content: { text?: string; type: string; }[] | string,
+  content: { text?: string; type: string }[] | string,
 ): string {
   if (typeof content === "string") {
     return content;
@@ -371,7 +371,7 @@ function extractUserMessageText(
 
   return content
     .filter(
-      (part): part is { text: string; type: "text"; } =>
+      (part): part is { text: string; type: "text" } =>
         part.type === "text" && typeof part.text === "string",
     )
     .map((part) => part.text)

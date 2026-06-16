@@ -68,7 +68,7 @@ export class RpcClient {
   private eventListeners: RpcEventListener[] = [];
   private pendingRequests = new Map<
     string,
-    { reject: (error: Error) => void; resolve: (response: RpcResponse) => void; }
+    { reject: (error: Error) => void; resolve: (response: RpcResponse) => void }
   >();
   private process: ChildProcess | null = null;
   private requestId = 0;
@@ -130,7 +130,7 @@ export class RpcClient {
    */
   async cycleModel(): Promise<{
     isScoped: boolean;
-    model: { id: string; provider: string; };
+    model: { id: string; provider: string };
     thinkingLevel: ThinkingLevel;
   } | null> {
     const response = await this.send({ type: "cycle_model" });
@@ -164,7 +164,7 @@ export class RpcClient {
    * Fork from a specific message.
    * @returns Object with `text` (the message text) and `cancelled` (if extension cancelled)
    */
-  async fork(entryId: string): Promise<{ cancelled: boolean; text: string; }> {
+  async fork(entryId: string): Promise<{ cancelled: boolean; text: string }> {
     const response = await this.send({ entryId, type: "fork" });
     return this.getData(response);
   }
@@ -306,7 +306,7 @@ export class RpcClient {
   async setModel(
     provider: string,
     modelId: string,
-  ): Promise<{ id: string; provider: string; }> {
+  ): Promise<{ id: string; provider: string }> {
     const response = await this.send({ modelId, provider, type: "set_model" });
     return this.getData(response);
   }
@@ -471,7 +471,7 @@ export class RpcClient {
     // This is safe because each public method specifies the correct T for its command.
     const successResponse = response as Extract<
       RpcResponse,
-      { data: unknown; success: true; }
+      { data: unknown; success: true }
     >;
     return successResponse.data as T;
   }

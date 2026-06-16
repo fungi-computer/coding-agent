@@ -138,7 +138,7 @@ function parseGenericGitUrl(url: string): GitSource | null {
   };
 }
 
-function splitRef(url: string): { ref?: string; repo: string; } {
+function splitRef(url: string): { ref?: string; repo: string } {
   const scpLikeMatch = url.match(/^git@([^:]+):(.+)$/);
   if (scpLikeMatch) {
     const pathWithMaybeRef = scpLikeMatch[2] ?? "";

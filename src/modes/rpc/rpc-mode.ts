@@ -83,7 +83,7 @@ export async function runRpcMode(
   // Pending extension UI requests waiting for response
   const pendingExtensionRequests = new Map<
     string,
-    { reject: (error: Error) => void; resolve: (value: any) => void; }
+    { reject: (error: Error) => void; resolve: (value: any) => void }
   >();
 
   // Shutdown request flag

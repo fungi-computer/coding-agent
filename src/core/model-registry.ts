@@ -369,8 +369,7 @@ export class ModelRegistry {
   private loadError: string | undefined = undefined;
   private modelRequestHeaders = new Map<string, Record<string, string>>();
   private models: Model<Api>[] = [];
-  private providerRequestConfigs =
-    new Map<string, ProviderRequestConfig>();
+  private providerRequestConfigs = new Map<string, ProviderRequestConfig>();
   private registeredProviders = new Map<string, ProviderConfigInput>();
 
   private constructor(
