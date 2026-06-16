@@ -267,9 +267,19 @@ export class AgentSessionServer {
     const session = this._sessions.get(sessionId)?.session;
     const manager = session?.sessionManager;
 
+    let status: "idle" | "thinking" | "streaming" | "compacting" = "idle";
+    if (session?.isCompacting) {
+      status = "compacting";
+    } else if (session?.isStreaming) {
+      status =
+        session.state.streamingMessage != null ? "streaming" : "thinking";
+    }
+
     return {
       activeToolNames: session?.getActiveToolNames() ?? [],
       agent: {
+        currentMessage: session?.state?.streamingMessage,
+        currentMessageId: session?.currentMessageId,
         isStreaming: session?.isStreaming ?? false,
         pendingToolCalls: [],
       },
@@ -277,6 +287,7 @@ export class AgentSessionServer {
       branchEntries: manager?.getEntries() ?? [],
       contextUsage: session?.getContextUsage(),
       cost: session?.getSessionStats()?.cost,
+      status,
       cwd: manager?.getCwd() ?? "",
       leafId: manager?.getLeafId() ?? null,
       model: session?.model,

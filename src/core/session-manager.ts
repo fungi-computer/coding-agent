@@ -127,7 +127,7 @@ export type ReadonlySessionManager = Pick<
 
 export interface SessionContext {
   messages: AgentMessage[];
-  model: { modelId: string; provider: string; } | null;
+  model: { modelId: string; provider: string } | null;
   thinkingLevel: string;
 }
 
@@ -557,10 +557,10 @@ export class SessionManager {
     return entry.id;
   }
 
-  appendMessage(message: CustomMessage | Message): string {
-    const id = nanoid();
+  appendMessage(message: CustomMessage | Message, id?: string): string {
+    const entryId = id ?? nanoid();
     const entry: SessionMessageEntry = {
-      id,
+      id: entryId,
       message,
       parentId: this.leafId,
       timestamp: new Date().toISOString(),
@@ -1122,7 +1122,7 @@ export function buildSessionContext(
 
   // Extract settings and find compaction
   let thinkingLevel = "off";
-  let model: { modelId: string; provider: string; } | null = null;
+  let model: { modelId: string; provider: string } | null = null;
   let compaction: CompactionEntry | null = null;
 
   for (const entry of path) {

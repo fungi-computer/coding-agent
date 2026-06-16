@@ -261,7 +261,7 @@ export async function createAgentSession(
                     c.text === "Image reading is disabled." &&
                     i > 0 &&
                     arr[i - 1].type === "text" &&
-                    (arr[i - 1] as { text: string; type: "text"; }).text ===
+                    (arr[i - 1] as { text: string; type: "text" }).text ===
                       "Image reading is disabled."
                   ),
               );
@@ -303,6 +303,7 @@ export async function createAgentSession(
       if (!auth.ok) {
         throw new Error(auth.error);
       }
+      const providerRetrySettings = settingsManager.getProviderRetrySettings();
       return streamSimple(model, context, {
         ...options,
         apiKey: auth.apiKey,
@@ -310,6 +311,10 @@ export async function createAgentSession(
           auth.headers || options?.headers
             ? { ...auth.headers, ...options?.headers }
             : undefined,
+        timeoutMs: options?.timeoutMs ?? providerRetrySettings.timeoutMs,
+        maxRetries: options?.maxRetries ?? providerRetrySettings.maxRetries,
+        maxRetryDelayMs:
+          options?.maxRetryDelayMs ?? providerRetrySettings.maxRetryDelayMs,
       });
     },
     thinkingBudgets: settingsManager.getThinkingBudgets(),

@@ -73,7 +73,7 @@ export class WebSocketClientTransport implements ClientTransport {
     this.messageHandlers.add(handler);
   }
 
-  send(message: { [key: string]: any; type: string; }): void {
+  send(message: { [key: string]: any; type: string }): void {
     if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
       this.debug(
         `Cannot send - WebSocket not open. State: ${this.ws?.readyState}`,
@@ -105,12 +105,6 @@ export class WebSocketClientTransport implements ClientTransport {
     }
   }
 
-  private handleClose = (event: CloseEvent): void => {
-    this.debug(`WebSocket closed: ${event.code} ${event.reason}`);
-    this.cleanup();
-    this.closeHandlers.forEach((h) => h());
-  };
-
   private handleError = (event: Event): void => {
     this.debug(`WebSocket error: ${event.type}`);
     if (this.connectRejecter) {
@@ -118,7 +112,18 @@ export class WebSocketClientTransport implements ClientTransport {
       this.connectResolver = null;
       this.connectRejecter = null;
     }
+    // Don't cleanup here — let handleClose do it so close handlers fire
+  };
+
+  private handleClose = (event: CloseEvent): void => {
+    this.debug(`WebSocket closed: ${event.code} ${event.reason}`);
+    if (this.connectRejecter) {
+      this.connectRejecter(new Error("WebSocket connection closed"));
+      this.connectResolver = null;
+      this.connectRejecter = null;
+    }
     this.cleanup();
+    this.closeHandlers.forEach((h) => h());
   };
 
   private handleMessage = (event: MessageEvent): void => {

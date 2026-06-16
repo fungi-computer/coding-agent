@@ -13,6 +13,7 @@ const createMockSessionFactory = (
   const defaultSession: Partial<AgentSession> = {
     abort: vi.fn(),
     compact: vi.fn().mockResolvedValue(undefined),
+    currentMessageId: undefined,
     dispose: vi.fn(),
     getActiveToolNames: vi.fn().mockReturnValue([]),
     getContextUsage: vi.fn().mockReturnValue(undefined),
@@ -30,6 +31,7 @@ const createMockSessionFactory = (
     setActiveToolsByName: vi.fn(),
     setModel: vi.fn().mockResolvedValue(undefined),
     setThinkingLevel: vi.fn(),
+    state: { isStreaming: false, streamingMessage: undefined } as any,
     subscribe: vi.fn().mockReturnValue(() => {}),
     thinkingLevel: "medium",
   };
@@ -384,6 +386,7 @@ describe("AgentSessionServer", () => {
         abort: vi.fn(),
         activeToolNames: [] as string[],
         compact: vi.fn().mockResolvedValue(undefined),
+        currentMessageId: undefined,
         cwd: "/tmp",
         dispose: vi.fn(),
         getActiveToolNames: vi.fn().mockReturnValue([]),
@@ -405,6 +408,7 @@ describe("AgentSessionServer", () => {
         setActiveToolsByName: vi.fn(),
         setModel: vi.fn().mockResolvedValue(undefined),
         setThinkingLevel: vi.fn(),
+        state: { isStreaming: false, streamingMessage: undefined } as any,
         subscribe: vi.fn((listener: (event: any) => void) => {
           mockSession._listener = listener;
           return () => {
@@ -454,6 +458,7 @@ describe("AgentSessionServer", () => {
         abort: vi.fn(),
         activeToolNames: [] as string[],
         compact: vi.fn().mockResolvedValue(undefined),
+        currentMessageId: undefined,
         cwd: "/test",
         dispose: vi.fn(),
         getActiveToolNames: vi.fn().mockReturnValue([]),
@@ -475,6 +480,7 @@ describe("AgentSessionServer", () => {
         setActiveToolsByName: vi.fn(),
         setModel: vi.fn().mockResolvedValue(undefined),
         setThinkingLevel: vi.fn(),
+        state: { isStreaming: false, streamingMessage: undefined } as any,
         subscribe: vi.fn((listener: (event: any) => void) => {
           mockSession._listener = listener;
           return () => {

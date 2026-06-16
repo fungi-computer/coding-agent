@@ -46,6 +46,11 @@ export interface RetrySettings {
   enabled?: boolean; // default: true
   maxDelayMs?: number; // default: 60000 (max server-requested delay before failing)
   maxRetries?: number; // default: 3
+  provider?: {
+    maxRetries?: number;
+    maxRetryDelayMs?: number;
+    timeoutMs?: number;
+  };
 }
 
 export interface Settings {
@@ -353,7 +358,7 @@ export class SettingsManager {
   private static tryLoadFromStorage(
     storage: SettingsStorage,
     scope: SettingsScope,
-  ): { error: Error | null; settings: Settings; } {
+  ): { error: Error | null; settings: Settings } {
     try {
       return {
         error: null,
@@ -532,6 +537,18 @@ export class SettingsManager {
       enabled: this.getRetryEnabled(),
       maxDelayMs: this.settings.retry?.maxDelayMs ?? 60000,
       maxRetries: this.settings.retry?.maxRetries ?? 3,
+    };
+  }
+
+  getProviderRetrySettings(): {
+    maxRetries?: number;
+    maxRetryDelayMs?: number;
+    timeoutMs?: number;
+  } {
+    return {
+      maxRetries: this.settings.retry?.provider?.maxRetries,
+      maxRetryDelayMs: this.settings.retry?.provider?.maxRetryDelayMs,
+      timeoutMs: this.settings.retry?.provider?.timeoutMs,
     };
   }
 

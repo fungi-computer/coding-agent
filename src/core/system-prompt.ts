@@ -9,7 +9,7 @@ export interface BuildSystemPromptOptions {
   /** Text to append to system prompt. */
   appendSystemPrompt?: string;
   /** Pre-loaded context files. */
-  contextFiles?: { content: string; path: string; }[];
+  contextFiles?: { content: string; path: string }[];
   /** Custom system prompt (replaces default). */
   customPrompt?: string;
   /** Working directory. Default: process.cwd() */
@@ -66,7 +66,8 @@ export function buildSystemPrompt(
 
     // Append skills section (only if read tool is available)
     const customPromptHasRead =
-      !selectedTools || selectedTools.includes("read");
+      !selectedTools ||
+      selectedTools.some((t) => t === "read" || t.endsWith("_read"));
     if (customPromptHasRead && skills.length > 0) {
       prompt += formatSkillsForPrompt(skills);
     }
@@ -105,11 +106,11 @@ export function buildSystemPrompt(
     guidelinesList.push(guideline);
   };
 
-  const hasBash = tools.includes("bash");
-  const hasGrep = tools.includes("grep");
-  const hasFind = tools.includes("find");
-  const hasLs = tools.includes("ls");
-  const hasRead = tools.includes("read");
+  const hasBash = tools.some((t) => t === "bash" || t.endsWith("_bash"));
+  const hasGrep = tools.some((t) => t === "grep" || t.endsWith("_grep"));
+  const hasFind = tools.some((t) => t === "find" || t.endsWith("_find"));
+  const hasLs = tools.some((t) => t === "ls" || t.endsWith("_ls"));
+  const hasRead = tools.some((t) => t === "read" || t.endsWith("_read"));
 
   // File exploration guidelines
   if (hasBash && !hasGrep && !hasFind && !hasLs) {

@@ -232,6 +232,7 @@ export interface SessionSnapshot {
   // Live/streaming state
   agent: {
     currentMessage?: AgentMessage;
+    currentMessageId?: string;
     isStreaming: boolean;
     pendingToolCalls: {
       args: unknown;
@@ -267,6 +268,9 @@ export interface SessionSnapshot {
 
   // Resources
   resources: SessionResources;
+
+  /** Derived agent status so new clients know what the agent is doing right now. */
+  status?: "idle" | "thinking" | "streaming" | "compacting";
 
   retry?: {
     active: boolean;

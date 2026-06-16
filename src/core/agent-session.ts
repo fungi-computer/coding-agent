@@ -479,6 +479,10 @@ export class AgentSession {
   get sessionName(): string | undefined {
     return this.sessionManager.getSessionName();
   }
+  /** ID of the currently streaming message, so snapshots can match live events. */
+  get currentMessageId(): string | undefined {
+    return this._currentMessageId;
+  }
   /** Full agent state */
   get state(): AgentState {
     return this.agent.state;
@@ -500,6 +504,8 @@ export class AgentSession {
     undefined;
   // Base system prompt (without extension appends) - used to apply fresh appends each turn
   private _baseSystemPrompt = "";
+  /** ID of the currently streaming message (from agent events), for snapshot alignment. */
+  private _currentMessageId?: string;
   // Branch summarization state
   private _branchSummaryAbortController: AbortController | undefined =
     undefined;
@@ -2756,6 +2762,14 @@ export class AgentSession {
       }
     }
 
+    // Track current message ID for snapshot alignment
+    if (event.type === "message_start" && event.message.role === "assistant") {
+      this._currentMessageId = event.id;
+    }
+    if (event.type === "message_end") {
+      this._currentMessageId = undefined;
+    }
+
     // Notify all listeners
     this._emit(event);
 
@@ -2776,7 +2790,8 @@ export class AgentSession {
         event.message.role === "toolResult"
       ) {
         // Regular LLM message - persist as SessionMessageEntry
-        this.sessionManager.appendMessage(event.message);
+        // Use the agent event ID so snapshot timeline entries match live event IDs.
+        this.sessionManager.appendMessage(event.message, event.id);
       }
       // Other message types (compactionSummary, branchSummary) are persisted elsewhere
 
