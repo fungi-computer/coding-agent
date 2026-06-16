@@ -275,6 +275,15 @@ export class AgentSessionServer {
         session.state.streamingMessage != null ? "streaming" : "thinking";
     }
 
+    const resourceLoader = session?.resourceLoader;
+    const skillsResult = resourceLoader?.getSkills();
+    console.log(
+      `[_buildSnapshot] sessionId=${sessionId} hasSession=${!!session} hasResourceLoader=${!!resourceLoader} skillsCount=${skillsResult?.skills.length ?? -1}`,
+    );
+    const promptsResult = resourceLoader?.getPrompts();
+    const themesResult = resourceLoader?.getThemes();
+    const extensionsResult = resourceLoader?.getExtensions();
+
     return {
       activeToolNames: session?.getActiveToolNames() ?? [],
       agent: {
@@ -293,14 +302,28 @@ export class AgentSessionServer {
       model: session?.model,
       queue: { followUp: [], steering: [] },
       resources: {
-        extensionErrors: [],
-        extensions: [],
-        promptDiagnostics: [],
-        prompts: [],
-        skillDiagnostics: [],
-        skills: [],
-        themeDiagnostics: [],
-        themes: [],
+        extensionErrors: extensionsResult?.errors ?? [],
+        extensions:
+          extensionsResult?.extensions.map((e) => ({
+            path: e.path,
+            sourceInfo: e.sourceInfo,
+          })) ?? [],
+        promptDiagnostics: promptsResult?.diagnostics ?? [],
+        prompts:
+          promptsResult?.prompts.map((p) => ({
+            filePath: p.filePath,
+            name: p.name,
+            sourceInfo: p.sourceInfo,
+          })) ?? [],
+        skillDiagnostics: skillsResult?.diagnostics ?? [],
+        skills:
+          skillsResult?.skills.map((s) => ({
+            filePath: s.filePath,
+            name: s.name,
+            sourceInfo: s.sourceInfo,
+          })) ?? [],
+        themeDiagnostics: themesResult?.diagnostics ?? [],
+        themes: themesResult?.themes ?? [],
       },
       sessionId,
       thinkingLevel: session?.thinkingLevel ?? "medium",

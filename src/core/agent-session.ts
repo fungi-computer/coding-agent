@@ -613,6 +613,7 @@ export class AgentSession {
     this._buildRuntime({
       includeAllExtensionTools: true,
     });
+    this._emitResourcesChanged();
   }
 
   /**
@@ -2908,6 +2909,7 @@ export class AgentSession {
         ? loaderAppendSystemPrompt.join("\n\n")
         : undefined;
     const loadedSkills = this._resourceLoader.getSkills().skills;
+    console.log(`[_rebuildSystemPrompt] skillsCount=${loadedSkills.length}`);
     const loadedContextFiles =
       this._resourceLoader.getAgentsFiles().agentsFiles;
 
