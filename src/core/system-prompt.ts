@@ -64,11 +64,10 @@ export function buildSystemPrompt(
       }
     }
 
-    // Append skills section (only if read tool is available)
-    const customPromptHasRead =
-      !selectedTools ||
-      selectedTools.some((t) => t === "read" || t.endsWith("_read"));
-    if (customPromptHasRead && skills.length > 0) {
+    // Append skills section. The read-tool gate is stale: the agent no
+    // longer has a direct `read` tool, but `meta_execute` can dispatch
+    // `file:read` so the agent can still load skill files.
+    if (skills.length > 0) {
       prompt += formatSkillsForPrompt(skills);
     }
 
