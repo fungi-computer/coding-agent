@@ -132,8 +132,15 @@ export interface AgentSessionConfig {
   /** Session start event metadata emitted when extensions bind to this runtime. */
   sessionStartEvent?: SessionStartEvent;
   settingsManager: SettingsManager;
-  /** Tools provided by the environment (file tools, bash, etc.) */
-  tools?: ToolDefinition[];
+  /**
+   * Provides the SDK tools for this session. Called by
+   * `_refreshToolRegistry()` on every refresh, so callers can swap
+   * tools in place without destroying the session. Replaces the
+   * previous frozen `tools: ToolDefinition[]` array. PLAN-016 PR 3:
+   * the api worker uses this to add/remove per-workspace `meta:execute`
+   * tools when the user attaches/detaches a workspace.
+   */
+  toolsProvider?: () => ToolDefinition[];
 }
 
 /** Session-specific events that extend the core AgentEvent */
@@ -582,7 +589,12 @@ export class AgentSession {
   // Tool registry for extension getTools/setTools
   private _toolRegistry = new Map<string, AgentTool>();
 
-  private _tools: ToolDefinition[];
+  /**
+   * Provider for SDK tools. Called on every `_refreshToolRegistry()`
+   * so the session can add/remove tools (e.g. per-workspace
+   * `meta:execute` tools) without destroying the session.
+   */
+  private _toolsProvider?: () => ToolDefinition[];
 
   private _turnIndex = 0;
 
@@ -595,7 +607,7 @@ export class AgentSession {
     this.settingsManager = config.settingsManager;
     this._scopedModels = config.scopedModels ?? [];
     this._resourceLoader = config.resourceLoader;
-    this._tools = config.tools ?? [];
+    this._toolsProvider = config.toolsProvider;
     this._cwd = config.cwd;
     this._modelRegistry = config.modelRegistry;
     this._extensionRunnerRef = config.extensionRunnerRef;
@@ -1995,7 +2007,7 @@ export class AgentSession {
     includeAllExtensionTools?: boolean;
   }): void {
     this._logger.info("build_runtime_start", {
-      toolsCount: this._tools.length,
+      toolsCount: this._toolsProvider?.().length ?? 0,
     });
 
     const extensionsResult = this._resourceLoader.getExtensions();
@@ -2010,7 +2022,7 @@ export class AgentSession {
     }
 
     const hasExtensions = extensionsResult.extensions.length > 0;
-    const hasTools = this._tools.length > 0;
+    const hasTools = (this._toolsProvider?.().length ?? 0) > 0;
     this._logger.debug("build_runtime_has_extensions_tools", {
       hasExtensions,
       hasTools,
@@ -2959,12 +2971,24 @@ export class AgentSession {
   // Tree Navigation
   // =========================================================================
 
+  /**
+   * Re-fetch the tool registry from the live `toolsProvider` and
+   * extension runner. Use this when the host environment's tools
+   * have changed (e.g. per-workspace `meta:execute` tools added or
+   * removed on attach/detach). The session itself is not destroyed.
+   * PLAN-016 PR 3.
+   */
+  refreshTools(): void {
+    this._refreshToolRegistry();
+  }
+
   private _refreshToolRegistry(): void {
     const registeredTools =
       this._extensionRunner?.getAllRegisteredTools() ?? [];
+    const sdkTools = this._toolsProvider?.() ?? [];
     const allTools = [
       ...registeredTools,
-      ...this._tools.map((definition) => ({
+      ...sdkTools.map((definition) => ({
         definition,
         sourceInfo: createSyntheticSourceInfo(`<sdk:${definition.name}>`, {
           source: "sdk",

@@ -59,7 +59,11 @@ export interface CreateAgentSessionFromServicesOptions {
   sessionManager: SessionManager;
   sessionStartEvent?: SessionStartEvent;
   thinkingLevel?: ThinkingLevel;
-  tools?: ToolDefinition[];
+  /**
+   * Provider for SDK tools. See `CreateAgentSessionOptions.toolsProvider`
+   * and PLAN-016 PR 3.
+   */
+  toolsProvider?: () => ToolDefinition[];
 }
 
 /**
@@ -105,7 +109,7 @@ export async function createAgentSessionFromServices(
     sessionStartEvent: options.sessionStartEvent,
     settingsManager: options.services.settingsManager,
     thinkingLevel: options.thinkingLevel,
-    tools: options.tools,
+    toolsProvider: options.toolsProvider,
   });
 }
 

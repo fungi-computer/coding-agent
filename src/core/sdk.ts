@@ -68,8 +68,13 @@ export interface CreateAgentSessionOptions {
   settingsManager?: SettingsManager;
   /** Thinking level. Default: from settings, else 'medium' (clamped to model capabilities) */
   thinkingLevel?: ThinkingLevel;
-  /** Tools provided by the environment (file tools, bash, etc.) */
-  tools?: ToolDefinition[];
+  /**
+   * Provider for SDK tools (file tools, bash, etc.). Called on every
+   * tool-registry refresh so callers can swap tools in place without
+   * destroying the session. Replaces the previous frozen `tools`
+   * array. PLAN-016 PR 3.
+   */
+  toolsProvider?: () => ToolDefinition[];
 }
 
 /** Result from createAgentSession */
@@ -128,7 +133,7 @@ export type { Skill } from "./skills.js";
  * await loader.reload();
  * const { session } = await createAgentSession({
  *   model: myModel,
- *   tools: [readTool, bashTool],
+ *   toolsProvider: () => [readTool, bashTool],
  *   resourceLoader: loader,
  *   sessionManager: SessionManager.inMemory(),
  * });
@@ -351,7 +356,7 @@ export async function createAgentSession(
     sessionManager,
     sessionStartEvent: options.sessionStartEvent,
     settingsManager,
-    tools: options.tools,
+    toolsProvider: options.toolsProvider,
   });
   const extensionsResult = resourceLoader.getExtensions();
 
