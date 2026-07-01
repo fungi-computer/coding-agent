@@ -19,7 +19,7 @@ import type {
   Message,
   Model,
   TextContent,
-} from "@mariozechner/pi-ai";
+} from "@earendil-works/pi-ai";
 import type {
   Agent,
   AgentEvent,
@@ -34,7 +34,7 @@ import {
   isContextOverflow,
   modelsAreEqual,
   resetApiProviders,
-} from "@mariozechner/pi-ai";
+} from "@earendil-works/pi-ai/compat";
 import { nanoid } from "@shiit/id";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { basename, dirname, join, resolve } from "node:path";
@@ -133,14 +133,23 @@ export interface AgentSessionConfig {
   sessionStartEvent?: SessionStartEvent;
   settingsManager: SettingsManager;
   /**
-   * Provides the SDK tools for this session. Called by
-   * `_refreshToolRegistry()` on every refresh, so callers can swap
-   * tools in place without destroying the session. Replaces the
-   * previous frozen `tools: ToolDefinition[]` array. PLAN-016 PR 3:
-   * the api worker uses this to add/remove per-workspace `meta:execute`
-   * tools when the user attaches/detaches a workspace.
+   * Initial SDK tools for this session. Optional — defaults to `[]`.
+   * The runtime reads this synchronously in the constructor to
+   * decide whether to spin up an `ExtensionRunner`. Replaced by the
+   * previous frozen `tools: ToolDefinition[]` array. The api worker
+   * fetches the initial workspace list once before constructing the
+   * session.
    */
-  toolsProvider?: () => ToolDefinition[];
+  tools?: ToolDefinition[];
+  /**
+   * Live tool provider. Called by `_refreshToolRegistry()` on every
+   * refresh, so callers can swap tools in place without destroying
+   * the session. Used by the api worker to add/remove per-workspace
+   * `meta:execute` tools when the user attaches/detaches a workspace.
+   * PLAN-016 PR 3 + the async follow-up that made the provider
+   * `Promise`-returning so it can fetch fresh per-workspace state.
+   */
+  toolsProvider?: () => Promise<ToolDefinition[]>;
 }
 
 /** Session-specific events that extend the core AgentEvent */
@@ -590,11 +599,18 @@ export class AgentSession {
   private _toolRegistry = new Map<string, AgentTool>();
 
   /**
+   * Initial SDK tools captured from `config.tools` at construction.
+   * Used to decide whether to spin up an `ExtensionRunner` and as
+   * the seed for the first tool registry. Subsequent refreshes go
+   * through `_toolsProvider`.
+   */
+  private _initialTools: ToolDefinition[] = [];
+  /**
    * Provider for SDK tools. Called on every `_refreshToolRegistry()`
    * so the session can add/remove tools (e.g. per-workspace
    * `meta:execute` tools) without destroying the session.
    */
-  private _toolsProvider?: () => ToolDefinition[];
+  private _toolsProvider?: () => Promise<ToolDefinition[]>;
 
   private _turnIndex = 0;
 
@@ -607,6 +623,7 @@ export class AgentSession {
     this.settingsManager = config.settingsManager;
     this._scopedModels = config.scopedModels ?? [];
     this._resourceLoader = config.resourceLoader;
+    this._initialTools = config.tools ?? [];
     this._toolsProvider = config.toolsProvider;
     this._cwd = config.cwd;
     this._modelRegistry = config.modelRegistry;
@@ -1926,7 +1943,9 @@ export class AgentSession {
           return this.sessionManager.getSessionName();
         },
         getThinkingLevel: () => this.thinkingLevel,
-        refreshTools: () => this._refreshToolRegistry(),
+        refreshTools: () => {
+          void this.refreshTools();
+        },
         sendMessage: (message, options) => {
           this.sendCustomMessage(message, options).catch((err) => {
             runner.emitError({
@@ -2007,7 +2026,7 @@ export class AgentSession {
     includeAllExtensionTools?: boolean;
   }): void {
     this._logger.info("build_runtime_start", {
-      toolsCount: this._toolsProvider?.().length ?? 0,
+      toolsCount: this._initialTools.length,
     });
 
     const extensionsResult = this._resourceLoader.getExtensions();
@@ -2022,7 +2041,7 @@ export class AgentSession {
     }
 
     const hasExtensions = extensionsResult.extensions.length > 0;
-    const hasTools = (this._toolsProvider?.().length ?? 0) > 0;
+    const hasTools = this._initialTools.length > 0;
     this._logger.debug("build_runtime_has_extensions_tools", {
       hasExtensions,
       hasTools,
@@ -2051,7 +2070,7 @@ export class AgentSession {
       this._applyExtensionBindings(this._extensionRunner);
     }
 
-    this._refreshToolRegistry();
+    this._setToolRegistry(this._initialTools);
     const toolNames = options.activeToolNames ?? [...this._toolRegistry.keys()];
     this.setActiveToolsByName(toolNames);
     this._logger.info("build_runtime_complete");
@@ -2787,6 +2806,15 @@ export class AgentSession {
     this._emit(event);
 
     // Handle session persistence
+    // ARCH-121: persist on message_start for assistant messages so the
+    // entry survives eviction. The placeholder is in 'streaming' state.
+    // completeMessage on message_end finalizes with full content.
+    // For user/tool messages, completeMessage is the only write
+    // (INSERT OR REPLACE) since they don't stream.
+    if (event.type === "message_start" && event.message.role === "assistant") {
+      this.sessionManager.beginStreamingMessage(event.message, event.id);
+    }
+
     if (event.type === "message_end") {
       // Check if this is a custom message from extensions
       if (event.message.role === "custom") {
@@ -2802,9 +2830,10 @@ export class AgentSession {
         event.message.role === "assistant" ||
         event.message.role === "toolResult"
       ) {
-        // Regular LLM message - persist as SessionMessageEntry
-        // Use the agent event ID so snapshot timeline entries match live event IDs.
-        this.sessionManager.appendMessage(event.message, event.id);
+        // Regular LLM message - finalize the streaming entry (assistant)
+        // or insert the entry (user/toolResult). Use the agent event ID
+        // so snapshot timeline entries match live event IDs.
+        this.sessionManager.completeMessage(event.message, event.id);
       }
       // Other message types (compactionSummary, branchSummary) are persisted elsewhere
 
@@ -2978,14 +3007,29 @@ export class AgentSession {
    * removed on attach/detach). The session itself is not destroyed.
    * PLAN-016 PR 3.
    */
-  refreshTools(): void {
-    this._refreshToolRegistry();
+  async refreshTools(): Promise<void> {
+    const sdkTools = (await this._toolsProvider?.()) ?? [];
+    this._setToolRegistry(sdkTools);
+    // Re-bind the active tools so the LLM sees the new set on its
+    // next turn. Without this, _setToolRegistry updates the metadata
+    // (_toolDefinitions, _toolRegistry) but agent.state.tools — the
+    // list the LLM is actually called with — is still the one
+    // captured at session creation. setActiveToolsByName reads from
+    // _toolRegistry (just populated), updates agent.state.tools,
+    // rebuilds the system prompt, and emits tools_changed.
+    this.setActiveToolsByName(Array.from(this._toolDefinitions.keys()));
   }
 
-  private _refreshToolRegistry(): void {
+  /**
+   * Build the tool registry from a known list of SDK tools. Used by
+   * `_buildRuntime` synchronously (with the initial `tools` from the
+   * constructor) and by `refreshTools` after awaiting the live
+   * `toolsProvider`. Sync — callers are responsible for awaiting
+   * any upstream async work.
+   */
+  private _setToolRegistry(sdkTools: ToolDefinition[]): void {
     const registeredTools =
       this._extensionRunner?.getAllRegisteredTools() ?? [];
-    const sdkTools = this._toolsProvider?.() ?? [];
     const allTools = [
       ...registeredTools,
       ...sdkTools.map((definition) => ({

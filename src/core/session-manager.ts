@@ -1,4 +1,4 @@
-import type { ImageContent, Message, TextContent } from "@mariozechner/pi-ai";
+import type { ImageContent, Message, TextContent } from "@earendil-works/pi-ai";
 import type { AgentMessage } from "@shiit/agent-core";
 
 import { nanoid } from "@shiit/id";
@@ -568,6 +568,25 @@ export class SessionManager {
     };
     this._appendEntry(entry);
     return entry.id;
+  }
+
+  /**
+   * ARCH-121: write a placeholder message entry on message_start. The
+   * base class is a no-op (the file-based session manager doesn't have
+   * a streaming concept). The SQLite subclass overrides this to persist
+   * the entry as 'streaming' so it survives eviction.
+   */
+  beginStreamingMessage(_message: CustomMessage | Message, _id: string): void {
+    // No-op in the base class. Subclasses with durable storage override.
+  }
+
+  /**
+   * ARCH-121: finalize a streaming message entry on message_end. The
+   * base class is a no-op. The SQLite subclass overrides this to
+   * persist the final content (INSERT OR REPLACE).
+   */
+  completeMessage(_message: CustomMessage | Message, _id: string): void {
+    // No-op in the base class. Subclasses with durable storage override.
   }
 
   /** Append a model change as child of current leaf, then advance leaf. Returns entry id. */

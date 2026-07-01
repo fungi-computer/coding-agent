@@ -28,10 +28,10 @@
   "dependencies": {
     "@mariozechner/jiti": "^2.6.2",
     "effect": "^3.21.0",
-    "@mariozechner/pi-ai": "^0.73.1",
+    "@earendil-works/pi-ai": "^0.80.2",
     "@shiit/agent-core": "^0.66.2",
     "@shiit/id": "^0.1.1",
-    "@sinclair/typebox": "^0.34.49",
+    "typebox": "^1.1.38",
     "chalk": "^5.5.0",
     "cli-highlight": "^2.1.11",
     "diff": "^8.0.2",

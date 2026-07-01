@@ -3,7 +3,7 @@ import {
   type Model,
   type SimpleStreamOptions,
   streamSimple,
-} from "@mariozechner/pi-ai";
+} from "@earendil-works/pi-ai/compat";
 import {
   Agent,
   type AgentMessage,
@@ -69,12 +69,21 @@ export interface CreateAgentSessionOptions {
   /** Thinking level. Default: from settings, else 'medium' (clamped to model capabilities) */
   thinkingLevel?: ThinkingLevel;
   /**
-   * Provider for SDK tools (file tools, bash, etc.). Called on every
-   * tool-registry refresh so callers can swap tools in place without
-   * destroying the session. Replaces the previous frozen `tools`
-   * array. PLAN-016 PR 3.
+   * Initial SDK tools (file tools, bash, etc.). Optional — defaults
+   * to `[]`. The runtime reads this synchronously to decide whether
+   * to spin up an `ExtensionRunner`. Fetched once by the caller
+   * before construction. The api worker reads the initial workspace
+   * list once and passes the resulting tools here.
    */
-  toolsProvider?: () => ToolDefinition[];
+  tools?: ToolDefinition[];
+  /**
+   * Provider for SDK tools. Called on every tool-registry refresh
+   * so callers can swap tools in place without destroying the
+   * session. Replaces the previous frozen `tools` array. PLAN-016
+   * PR 3 + the async follow-up that made the provider
+   * `Promise`-returning so it can fetch fresh per-workspace state.
+   */
+  toolsProvider?: () => Promise<ToolDefinition[]>;
 }
 
 /** Result from createAgentSession */
@@ -113,7 +122,7 @@ export type { Skill } from "./skills.js";
  * const { session } = await createAgentSession();
  *
  * // With explicit model
- * import { getModel } from '@mariozechner/pi-ai';
+ * import { getModel } from '@earendil-works/pi-ai';
  * const { session } = await createAgentSession({
  *   model: getModel('anthropic', 'claude-opus-4-5'),
  *   thinkingLevel: 'high',
@@ -356,6 +365,7 @@ export async function createAgentSession(
     sessionManager,
     sessionStartEvent: options.sessionStartEvent,
     settingsManager,
+    tools: options.tools ?? [],
     toolsProvider: options.toolsProvider,
   });
   const extensionsResult = resourceLoader.getExtensions();

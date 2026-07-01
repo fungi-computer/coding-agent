@@ -1,4 +1,4 @@
-import type { Model, SimpleStreamOptions } from "@mariozechner/pi-ai";
+import type { Model, SimpleStreamOptions } from "@earendil-works/pi-ai";
 import type { ThinkingLevel } from "@shiit/agent-core";
 
 import { join } from "node:path";
@@ -60,10 +60,17 @@ export interface CreateAgentSessionFromServicesOptions {
   sessionStartEvent?: SessionStartEvent;
   thinkingLevel?: ThinkingLevel;
   /**
-   * Provider for SDK tools. See `CreateAgentSessionOptions.toolsProvider`
+   * Initial SDK tools. Optional — defaults to `[]`. The session
+   * runtime reads this synchronously to decide whether to spin up
+   * an `ExtensionRunner`. Fetched once by the caller before
+   * construction.
+   */
+  tools?: ToolDefinition[];
+  /**
+   * Live tool provider. See `CreateAgentSessionOptions.toolsProvider`
    * and PLAN-016 PR 3.
    */
-  toolsProvider?: () => ToolDefinition[];
+  toolsProvider?: () => Promise<ToolDefinition[]>;
 }
 
 /**
@@ -109,6 +116,7 @@ export async function createAgentSessionFromServices(
     sessionStartEvent: options.sessionStartEvent,
     settingsManager: options.services.settingsManager,
     thinkingLevel: options.thinkingLevel,
+    tools: options.tools ?? [],
     toolsProvider: options.toolsProvider,
   });
 }

@@ -5,10 +5,10 @@
  * and after compaction the session is reloaded.
  */
 
-import type { AssistantMessage, Model, Usage } from "@mariozechner/pi-ai";
+import type { AssistantMessage, Model, Usage } from "@earendil-works/pi-ai";
 import type { AgentMessage } from "@shiit/agent-core";
 
-import { completeSimple } from "@mariozechner/pi-ai";
+import { completeSimple } from "@earendil-works/pi-ai/compat";
 
 import {
   convertToLlm,

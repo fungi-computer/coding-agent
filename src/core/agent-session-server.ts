@@ -4,7 +4,7 @@
  * This class is transport-agnostic and uses interfaces for persistence and tool execution.
  */
 
-import type { Model } from "@mariozechner/pi-ai";
+import type { Model } from "@earendil-works/pi-ai";
 import type { ThinkingLevel } from "@shiit/agent-core";
 
 import type {

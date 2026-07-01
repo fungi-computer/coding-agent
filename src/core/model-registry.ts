@@ -16,13 +16,13 @@ import {
   registerApiProvider,
   resetApiProviders,
   type SimpleStreamOptions,
-} from "@mariozechner/pi-ai";
+} from "@earendil-works/pi-ai/compat";
 import {
   registerOAuthProvider,
   resetOAuthProviders,
-} from "@mariozechner/pi-ai/oauth";
-import { type Static, Type } from "@sinclair/typebox";
-import AjvModule from "ajv";
+} from "@earendil-works/pi-ai/oauth";
+import { type Static, Type } from "typebox";
+import { Compile } from "typebox/compile";
 import { existsSync, readFileSync } from "fs";
 import { join } from "path";
 
@@ -35,10 +35,6 @@ import {
   resolveConfigValueUncached,
   resolveHeadersOrThrow,
 } from "./resolve-config-value.js";
-
-const Ajv = (AjvModule as any).default || AjvModule;
-const ajv = new Ajv();
-
 // Schema for OpenRouter routing preferences
 const PercentileCutoffsSchema = Type.Object({
   p50: Type.Optional(Type.Number()),
@@ -203,7 +199,11 @@ const ModelsConfigSchema = Type.Object({
   providers: Type.Record(Type.String(), ProviderConfigSchema),
 });
 
-ajv.addSchema(ModelsConfigSchema, "ModelsConfig");
+// Compile the schema once for runtime validation. Replaces the previous
+// ajv-based validator, which doesn't work in Cloudflare Workers'
+// eval-restricted runtime. typebox/compile produces a Validator that
+// runs in any JS environment.
+const validateModelsConfig = Compile(ModelsConfigSchema);
 
 export type ResolvedRequestAuth =
   | {
@@ -681,11 +681,11 @@ export class ModelRegistry {
       const config: ModelsConfig = JSON.parse(content);
 
       // Validate schema
-      const validate = ajv.getSchema("ModelsConfig")!;
-      if (!validate(config)) {
+      if (!validateModelsConfig.Check(config)) {
         const errors =
-          validate.errors
-            ?.map((e: any) => `  - ${e.instancePath || "root"}: ${e.message}`)
+          validateModelsConfig
+            .Errors(config)
+            .map((e) => `  - ${e.instancePath || "root"}: ${e.message}`)
             .join("\n") || "Unknown schema error";
         return emptyCustomModelsResult(
           `Invalid models.json schema:\n${errors}\n\nFile: ${modelsJsonPath}`,

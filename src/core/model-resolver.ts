@@ -9,7 +9,7 @@ import {
   type KnownProvider,
   type Model,
   modelsAreEqual,
-} from "@mariozechner/pi-ai";
+} from "@earendil-works/pi-ai";
 import chalk from "chalk";
 import { minimatch } from "minimatch";
 
@@ -31,6 +31,7 @@ const isValidThinkingLevel = (level: string): level is ThinkingLevel =>
 /** Default model IDs for each known provider */
 export const defaultModelPerProvider: Record<KnownProvider, string> = {
   "amazon-bedrock": "us.anthropic.claude-opus-4-6-v1",
+  "ant-ling": "Ling-2.6-1T",
   anthropic: "claude-opus-4-6",
   "azure-openai-responses": "gpt-5.2",
   cerebras: "zai-glm-4.7",
@@ -60,7 +61,10 @@ export const defaultModelPerProvider: Record<KnownProvider, string> = {
   "xiaomi-token-plan-cn": "glm-5",
   "xiaomi-token-plan-ams": "glm-5",
   "xiaomi-token-plan-sgp": "glm-5",
+  nvidia: "meta/llama-3.1-70b-instruct",
+  together: "MiniMaxAI/MiniMax-M2.7",
   zai: "glm-5",
+  "zai-coding-cn": "glm-4.5-air",
 };
 
 export interface InitialModelResult {

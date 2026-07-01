@@ -5,7 +5,7 @@
  * @module
  */
 
-import type { Model } from "@mariozechner/pi-ai";
+import type { Model } from "@earendil-works/pi-ai";
 import type { AgentMessage, ThinkingLevel } from "@shiit/agent-core";
 
 import type { ResourceDiagnostic } from "./diagnostics.js";

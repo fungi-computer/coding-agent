@@ -5,8 +5,12 @@
  * and provides a transformer to convert them to LLM-compatible messages.
  */
 
-import type { ImageContent, Message, TextContent } from "@mariozechner/pi-ai";
+import type { ImageContent, Message, TextContent } from "@earendil-works/pi-ai";
 import type { AgentMessage } from "@shiit/agent-core";
+
+// Re-export the pi-ai message content types so consumers of
+// `@shiit/coding-agent` don't need a direct pi-ai dependency.
+export type { ImageContent, Message, TextContent };
 
 export const COMPACTION_SUMMARY_PREFIX = `The conversation history before this point was compacted into the following summary:
 

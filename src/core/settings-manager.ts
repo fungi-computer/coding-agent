@@ -1,4 +1,4 @@
-import type { Transport } from "@mariozechner/pi-ai";
+import type { Transport } from "@earendil-works/pi-ai";
 
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "fs";
 import { dirname, join } from "path";
@@ -42,10 +42,10 @@ export type PackageSource =
   | string;
 
 export interface RetrySettings {
-  baseDelayMs?: number; // default: 2000 (exponential backoff: 2s, 4s, 8s)
+  baseDelayMs?: number; // default: 3000 (exponential backoff: 3s, 6s, 12s, 24s, 48s, then capped at maxDelayMs)
   enabled?: boolean; // default: true
   maxDelayMs?: number; // default: 60000 (max server-requested delay before failing)
-  maxRetries?: number; // default: 3
+  maxRetries?: number; // default: 10 (5 exponential backoff retries + 5 capped at maxDelayMs ≈ 6.5 min total)
   provider?: {
     maxRetries?: number;
     maxRetryDelayMs?: number;
@@ -533,10 +533,10 @@ export class SettingsManager {
     maxRetries: number;
   } {
     return {
-      baseDelayMs: this.settings.retry?.baseDelayMs ?? 2000,
+      baseDelayMs: this.settings.retry?.baseDelayMs ?? 3000,
       enabled: this.getRetryEnabled(),
       maxDelayMs: this.settings.retry?.maxDelayMs ?? 60000,
-      maxRetries: this.settings.retry?.maxRetries ?? 3,
+      maxRetries: this.settings.retry?.maxRetries ?? 10,
     };
   }
 
