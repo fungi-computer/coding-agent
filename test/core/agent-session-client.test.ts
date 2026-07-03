@@ -26,9 +26,9 @@ const testSnapshot = (overrides?: { cwd?: string; sessionId?: string }) => ({
   activeToolNames: ["read", "bash"] as const,
   agent: { isStreaming: false, pendingToolCalls: [] },
   availableThinkingLevels: ["off", "low", "medium", "high"] as const,
-  branchEntries: [],
   cwd: overrides?.cwd ?? "/",
   leafId: "leaf-1",
+  messages: [],
   queue: { followUp: [] as const, steering: [] as const },
   resources: {
     extensionErrors: [],

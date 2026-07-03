@@ -18,6 +18,7 @@ import type {
 } from "./agent-session-server-types.js";
 import type { AgentSession } from "./agent-session.js";
 import type { ModelRegistry } from "./model-registry.js";
+import { buildSessionContext } from "./session-manager.js";
 import type { SessionListItem, SessionStore } from "./session-store.js";
 import type { Connection, Transport } from "./transport.js";
 
@@ -293,12 +294,15 @@ export class AgentSessionServer {
         pendingToolCalls: [],
       },
       availableThinkingLevels: ["off", "low", "medium", "high"],
-      branchEntries: manager?.getEntries() ?? [],
       contextUsage: session?.getContextUsage(),
       cost: session?.getSessionStats()?.cost,
       status,
       cwd: manager?.getCwd() ?? "",
       leafId: manager?.getLeafId() ?? null,
+      messages: buildSessionContext(
+        manager?.getBranch() ?? [],
+        manager?.getLeafId() ?? undefined,
+      ).messages,
       model: session?.model,
       queue: { followUp: [], steering: [] },
       resources: {

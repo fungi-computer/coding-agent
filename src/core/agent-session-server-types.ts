@@ -243,7 +243,14 @@ export interface SessionSnapshot {
   };
   availableThinkingLevels: readonly ThinkingLevel[];
 
-  branchEntries: SessionEntry[];
+  // LLM-ready messages, ordered from earliest to latest. This is
+  // the full conversation as the LLM sees it (compacted if a
+  // compaction entry is in the branch). PLAN-019: replaces
+  // `branchEntries` to keep snapshot payloads small. PLAN-019
+  // follow-up (Phase B) lets the LLM context cache absorb repeat
+  // builds of this array.
+  messages: AgentMessage[];
+
   // Status
   compaction?: {
     active: boolean;
