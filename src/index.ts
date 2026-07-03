@@ -11,13 +11,23 @@ export {
   type AgentSessionSyncEvent,
   type ClientMessage,
   type GlobalServerEvent,
+  type Identity,
+  type PersistedAttachment,
   type ServerMessage,
   type SessionCommand,
   type SessionFactory,
   type SessionListItem,
   type SessionSnapshot,
+  parseClientMessage,
+  parseServerMessage,
+  serializeClientMessage,
+  serializeServerMessage,
 } from "./core/agent-session-server-types.js";
 export { AgentSessionServer } from "./core/agent-session-server.js";
+export {
+  type ConnectionMessage,
+  type ServerToClientMessage,
+} from "./core/transport.js";
 export {
   AgentSession,
   type AgentSessionConfig,

@@ -115,23 +115,33 @@ export type AgentSessionSyncEvent =
   | { cost?: number; type: "context_usage_changed"; usage?: ContextUsage };
 
 // ============================================================================
-// Client Message (Client → Server, over WebSocket)
+// Client/Server Message (over WebSocket)
+//
+// PLAN-020: the canonical wire-format types live in
+// `agent-session-protocol.ts`. Re-exported here for back-compat
+// with existing imports. New code should import from the protocol
+// module directly.
+//
+// The previous `ClientMessage`/`ServerMessage` declared here was a
+// lie: `ServerMessage` declared `{ data: SessionSnapshot; ... }` for
+// the `snapshot` variant but the wire actually emitted
+// `{ snapshot: SessionSnapshot; ... }`. The chat was reading the
+// wire correctly; the type was wrong. The protocol module is now
+// the source of truth, and a round-trip test pins it.
 // ============================================================================
 
-export interface ClientConnection {
-  lastSequenceId: number;
-  sessionId?: string;
-}
-
-// ============================================================================
-// Server Message (Server → Client, over WebSocket)
-// ============================================================================
-
-/** Raw messages from client over WebSocket */
-export type ClientMessage =
-  | { cols: number; rows: number; sessionId: string; type: "resize" }
-  | { command: SessionCommand; sessionId: string; type: "command" }
-  | { data: string; sessionId: string; type: "input" };
+export {
+  parseClientMessage,
+  parseServerMessage,
+  serializeClientMessage,
+  serializeServerMessage,
+} from "./agent-session-protocol.js";
+export type {
+  ClientMessage,
+  Identity,
+  PersistedAttachment,
+  ServerMessage,
+} from "./agent-session-protocol.js";
 
 // ============================================================================
 // AgentSessionSyncEvent (mirrors AgentSessionEvent for wire format)
@@ -152,24 +162,13 @@ export type GlobalServerEvent =
   | { type: "server_shutdown" };
 
 // ============================================================================
-// Session Resources
-// ============================================================================
-
-/** Messages from server to client over WebSocket */
-export type ServerMessage =
-  | { data: SessionSnapshot; sessionId: string; type: "snapshot" }
-  | {
-      event: AgentSessionSyncEvent;
-      sequenceId: number;
-      sessionId: string;
-      type: "event";
-    }
-  | { message: string; sessionId: string; type: "error" }
-  | { sessionId: string; type: "welcome" };
-
-// ============================================================================
 // Session Snapshot (Full state for join/reconnect)
 // ============================================================================
+
+export interface ClientConnection {
+  lastSequenceId: number;
+  sessionId?: string;
+}
 
 /** Commands a client can send to the server */
 export type SessionCommand =

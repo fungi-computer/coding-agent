@@ -1,17 +1,19 @@
 /**
  * InMemoryTransport - For testing AgentSessionServer without network.
+ *
+ * PLAN-020: the TUI's wire format is now `ConnectionMessage` /
+ * `ServerToClientMessage` (defined in `transport.ts`). The old
+ * `ClientMessage`/`ServerMessage` names now belong to the WS
+ * protocol in `agent-session-protocol.ts`.
  */
 
-import type {
-  ClientMessage,
-  ServerMessage,
-} from "./agent-session-server-types.js";
 import type { Connection, Transport } from "./transport.js";
+import type { ConnectionMessage, ServerToClientMessage } from "./transport.js";
 
 export class InMemoryConnection implements Connection {
   private closeHandlers = new Set<() => void>();
-  private messageHandlers = new Set<(message: ClientMessage) => void>();
-  private messages: ClientMessage[] = [];
+  private messageHandlers = new Set<(message: ConnectionMessage) => void>();
+  private messages: ConnectionMessage[] = [];
   private open = true;
 
   close(): void {
@@ -19,15 +21,15 @@ export class InMemoryConnection implements Connection {
     this.closeHandlers.forEach((h) => h());
   }
 
-  getReceivedMessages(): ServerMessage[] {
-    return this.messages as unknown as ServerMessage[];
+  getReceivedMessages(): ServerToClientMessage[] {
+    return this.messages as unknown as ServerToClientMessage[];
   }
 
   onClose(handler: () => void): void {
     this.closeHandlers.add(handler);
   }
 
-  onMessage(handler: (message: ClientMessage) => void): void {
+  onMessage(handler: (message: ConnectionMessage) => void): void {
     this.messageHandlers.add(handler);
     for (const msg of this.messages) {
       handler(msg);
@@ -35,12 +37,12 @@ export class InMemoryConnection implements Connection {
     this.messages = [];
   }
 
-  send(message: ServerMessage): void {
+  send(message: ServerToClientMessage): void {
     if (!this.open) return;
-    this.messages.push(message as any);
+    this.messages.push(message as unknown as ConnectionMessage);
   }
 
-  simulateMessage(msg: ClientMessage): void {
+  simulateMessage(msg: ConnectionMessage): void {
     this.messageHandlers.forEach((h) => h(msg));
   }
 }

@@ -9,10 +9,18 @@ export {
   AgentSessionClient,
   type ClientTransport,
 } from "./core/agent-session-client.js";
+export {
+  parseClientMessage,
+  parseServerMessage,
+  serializeClientMessage,
+  serializeServerMessage,
+} from "./core/agent-session-server-types.js";
 export type {
   AgentSessionSyncEvent,
   ClientMessage,
   GlobalServerEvent,
+  Identity,
+  PersistedAttachment,
   ServerMessage,
   SessionCommand,
   SessionFactory,
@@ -22,6 +30,8 @@ export type {
 export type { SessionStore } from "./core/session-store.js";
 export {
   type Connection,
+  type ConnectionMessage,
+  type ServerToClientMessage,
   Transport,
   type TransportFactory,
 } from "./core/transport.js";
