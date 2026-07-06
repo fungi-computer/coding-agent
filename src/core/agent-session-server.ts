@@ -5,7 +5,7 @@
  */
 
 import type { Model } from "@earendil-works/pi-ai";
-import type { ThinkingLevel } from "@shiit/agent-core";
+import type { AgentMessage, ThinkingLevel } from "@shiit/agent-core";
 
 import type {
   SessionFactory,
@@ -299,10 +299,12 @@ export class AgentSessionServer {
       status,
       cwd: manager?.getCwd() ?? "",
       leafId: manager?.getLeafId() ?? null,
-      messages: buildSessionContext(
-        manager?.getBranch() ?? [],
-        manager?.getLeafId() ?? undefined,
-      ).messages,
+      messages: stripImagesForTransport(
+        buildSessionContext(
+          manager?.getBranch() ?? [],
+          manager?.getLeafId() ?? undefined,
+        ).messages,
+      ),
       model: session?.model,
       queue: { followUp: [], steering: [] },
       resources: {
@@ -348,4 +350,39 @@ export class AgentSessionServer {
       name: data.name,
     };
   }
+}
+
+/**
+ * Strip base64 image data from messages before they leave the server.
+ *
+ * The LLM context builder reads the same `getBranch()` that the snapshot
+ * reads, so the model still gets full image bytes via the in-memory
+ * state. This function only affects the transport shape (WS upgrade
+ * payload, HTTP `/snapshot` body) so a session with many image tool
+ * results doesn't blow the 128 MB Worker memory budget on serialization.
+ *
+ * ARCH-136: a 3 MB session snapshot was OOMing the DO during WS
+ * upgrade. ~35% of that bloat was base64 image data from `read_image`.
+ * The placeholder text preserves the visible transcript structure
+ * (the user can still see "Read image file [image/png]") and the
+ * model can re-call `read_image` if it needs the image again.
+ */
+export function stripImagesForTransport(
+  messages: AgentMessage[],
+): AgentMessage[] {
+  return messages.map((m) => {
+    if (m.role !== "user" && m.role !== "toolResult") return m;
+    const content = m.content;
+    if (!Array.isArray(content)) return m;
+    const stripped = content.map((block: any) => {
+      if (block.type === "image") {
+        return {
+          type: "text" as const,
+          text: `[image: ${block.mimeType} — omitted from snapshot to keep payload small]`,
+        };
+      }
+      return block;
+    });
+    return { ...m, content: stripped } as AgentMessage;
+  });
 }
