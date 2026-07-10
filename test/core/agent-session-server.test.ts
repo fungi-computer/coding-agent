@@ -24,6 +24,7 @@ const createMockSessionFactory = (
     sessionId: "",
     sessionManager: {
       getBranch: vi.fn().mockReturnValue([]),
+      getContextPath: vi.fn().mockReturnValue([]),
       getCwd: vi.fn().mockReturnValue("/tmp"),
       getEntries: vi.fn().mockReturnValue([]),
       getLeafId: vi.fn().mockReturnValue(null),
@@ -225,6 +226,7 @@ describe("AgentSessionServer", () => {
         sessionId: "test",
         sessionManager: {
           getBranch: vi.fn().mockReturnValue([]),
+          getContextPath: vi.fn().mockReturnValue([]),
           getCwd: vi.fn().mockReturnValue("/tmp"),
           getEntries: vi.fn().mockReturnValue([]),
           getLeafId: vi.fn().mockReturnValue(null),
@@ -268,6 +270,7 @@ describe("AgentSessionServer", () => {
         sessionId: "test",
         sessionManager: {
           getBranch: vi.fn().mockReturnValue([]),
+          getContextPath: vi.fn().mockReturnValue([]),
           getCwd: vi.fn().mockReturnValue("/tmp"),
           getEntries: vi.fn().mockReturnValue([]),
           getLeafId: vi.fn().mockReturnValue(null),
@@ -338,6 +341,7 @@ describe("AgentSessionServer", () => {
         sessionId: "test",
         sessionManager: {
           getBranch: vi.fn().mockReturnValue([]),
+          getContextPath: vi.fn().mockReturnValue([]),
           getCwd: vi.fn().mockReturnValue("/tmp"),
           getEntries: vi.fn().mockReturnValue([]),
           getLeafId: vi.fn().mockReturnValue(null),
@@ -401,6 +405,7 @@ describe("AgentSessionServer", () => {
         sessionName: undefined,
         sessionManager: {
           getBranch: vi.fn().mockReturnValue([]),
+          getContextPath: vi.fn().mockReturnValue([]),
           getCwd: vi.fn().mockReturnValue("/tmp"),
           getEntries: vi.fn().mockReturnValue([]),
           getLeafId: vi.fn().mockReturnValue(null),
@@ -473,6 +478,7 @@ describe("AgentSessionServer", () => {
         sessionName: undefined,
         sessionManager: {
           getBranch: vi.fn().mockReturnValue([]),
+          getContextPath: vi.fn().mockReturnValue([]),
           getCwd: vi.fn().mockReturnValue("/test"),
           getEntries: vi.fn().mockReturnValue([]),
           getLeafId: vi.fn().mockReturnValue(null),
@@ -571,6 +577,7 @@ describe("AgentSessionServer", () => {
         sessionName: undefined,
         sessionManager: {
           getBranch: vi.fn().mockReturnValue([imageEntry]),
+          getContextPath: vi.fn().mockReturnValue([imageEntry]),
           getCwd: vi.fn().mockReturnValue("/test"),
           getEntries: vi.fn().mockReturnValue([imageEntry]),
           getLeafId: vi.fn().mockReturnValue("entry-image"),
@@ -618,6 +625,138 @@ describe("AgentSessionServer", () => {
           b.type === "text" && b.text.includes("omitted from snapshot"),
       );
       expect(placeholder).toBeDefined();
+
+      await server.stop();
+    });
+
+    // ARCH-161: _buildSnapshot must use getContextPath() (bounded at the
+    // most recent compaction), not getBranch() (full history). Otherwise
+    // a session with one compaction and 1500+ post-compaction entries
+    // produces a 3+ MB snapshot that OOMs the DO on WS upgrade.
+    test("snapshot uses getContextPath, not getBranch", async () => {
+      const transport = new InMemoryTransport();
+      const store = new InMemorySessionStore();
+
+      const { sessionId } = await store.createSession("/test");
+
+      const preCompaction = {
+        id: "pre-1",
+        parentId: null,
+        timestamp: "2026-07-04T00:00:00.000Z",
+        type: "message" as const,
+        message: {
+          role: "user" as const,
+          content: "this is the OLD pre-compaction message",
+          timestamp: 1,
+        },
+      };
+      const compactionEntry = {
+        details: { modifiedFiles: [], readFiles: [] },
+        firstKeptEntryId: "post-1",
+        fromHook: false,
+        id: "comp-1",
+        parentId: "pre-1",
+        summary: "summary of the pre-compaction era",
+        timestamp: "2026-07-04T00:00:02.000Z",
+        tokensBefore: 1000,
+        type: "compaction" as const,
+      };
+      const postCompaction = {
+        id: "post-1",
+        parentId: "comp-1",
+        timestamp: "2026-07-04T00:00:03.000Z",
+        type: "message" as const,
+        message: {
+          role: "assistant" as const,
+          content: [
+            {
+              type: "text" as const,
+              text: "this is the NEW post-compaction message",
+            },
+          ],
+          api: "anthropic",
+          provider: "anthropic",
+          model: "claude-sonnet-4-5",
+          usage: {
+            input: 10,
+            output: 5,
+            cacheRead: 0,
+            cacheWrite: 0,
+            totalTokens: 15,
+            cost: {
+              input: 0,
+              output: 0,
+              cacheRead: 0,
+              cacheWrite: 0,
+              total: 0,
+            },
+          },
+          stopReason: "stop" as const,
+          timestamp: 4,
+        },
+      };
+
+      // Full path includes the pre-compaction entry. Bounded path stops
+      // at the compaction. The snapshot should be built from the bounded
+      // path, not the full one.
+      const fullPath = [preCompaction, compactionEntry, postCompaction];
+      const boundedPath = [compactionEntry, postCompaction];
+
+      const getBranch = vi.fn().mockReturnValue(fullPath);
+      const getContextPath = vi.fn().mockReturnValue(boundedPath);
+
+      const mockSession = {
+        abort: vi.fn(),
+        compact: vi.fn().mockResolvedValue(undefined),
+        currentMessageId: undefined,
+        cwd: "/test",
+        dispose: vi.fn(),
+        getActiveToolNames: vi.fn().mockReturnValue([]),
+        getContextUsage: vi.fn().mockReturnValue(undefined),
+        getSessionStats: vi.fn().mockReturnValue(undefined),
+        isStreaming: false,
+        leafId: "post-1",
+        model: undefined,
+        navigateTree: vi.fn().mockResolvedValue(undefined),
+        prompt: vi.fn().mockResolvedValue(undefined),
+        sessionId,
+        sessionName: undefined,
+        sessionManager: {
+          getBranch,
+          getContextPath,
+          getCwd: vi.fn().mockReturnValue("/test"),
+          getEntries: vi.fn().mockReturnValue(fullPath),
+          getLeafId: vi.fn().mockReturnValue("post-1"),
+        },
+        setActiveToolsByName: vi.fn(),
+        setModel: vi.fn().mockResolvedValue(undefined),
+        setThinkingLevel: vi.fn(),
+        state: { isStreaming: false, streamingMessage: undefined } as any,
+        subscribe: vi.fn().mockReturnValue(() => {}),
+        thinkingLevel: "medium" as const,
+      };
+
+      const factory = createMockSessionFactory(
+        mockSession as unknown as AgentSession,
+      );
+      const server = new AgentSessionServer(
+        store,
+        factory,
+        mockModelRegistry,
+        transport,
+      );
+
+      await server.start();
+      const snapshot = await server.joinSession(sessionId);
+
+      // _buildSnapshot must call the bounded variant
+      expect(getContextPath).toHaveBeenCalled();
+      // The snapshot messages should reflect the bounded path
+      const wireShape = JSON.stringify(snapshot.messages);
+      expect(wireShape).toContain("this is the NEW post-compaction message");
+      expect(wireShape).toContain("summary of the pre-compaction era");
+      // The pre-compaction message must NOT appear in the snapshot
+      expect(wireShape).not.toContain("this is the OLD pre-compaction message");
 
       await server.stop();
     });
@@ -687,6 +826,7 @@ describe("AgentSessionServer", () => {
         sessionName: undefined,
         sessionManager: {
           getBranch: vi.fn().mockReturnValue([userEntry, assistantEntry]),
+          getContextPath: vi.fn().mockReturnValue([userEntry, assistantEntry]),
           getCwd: vi.fn().mockReturnValue("/test"),
           getEntries: vi.fn().mockReturnValue([userEntry, assistantEntry]),
           getLeafId: vi.fn().mockReturnValue("entry-asst"),

@@ -736,7 +736,7 @@ export class AgentSession {
         this.model,
       );
 
-      const pathEntries = this.sessionManager.getBranch();
+      const pathEntries = this.sessionManager.getContextPath();
       const settings = this.settingsManager.getCompactionSettings();
 
       const preparation = prepareCompaction(pathEntries, settings);
@@ -1004,7 +1004,7 @@ export class AgentSession {
     // After compaction, the last assistant usage reflects pre-compaction context size.
     // We can only trust usage from an assistant that responded after the latest compaction.
     // If no such assistant exists, context token count is unknown until the next LLM response.
-    const branchEntries = this.sessionManager.getBranch();
+    const branchEntries = this.sessionManager.getContextPath();
     const latestCompaction = getLatestCompactionEntry(branchEntries);
 
     if (latestCompaction) {
@@ -2112,7 +2112,7 @@ export class AgentSession {
     // compaction boundary. This prevents a stale pre-compaction usage/error
     // from retriggering compaction on the first prompt after compaction.
     const compactionEntry = getLatestCompactionEntry(
-      this.sessionManager.getBranch(),
+      this.sessionManager.getContextPath(),
     );
     const assistantIsFromBeforeCompaction =
       compactionEntry !== null &&
@@ -3132,7 +3132,7 @@ export class AgentSession {
       }
       const { apiKey, headers } = authResult;
 
-      const pathEntries = this.sessionManager.getBranch();
+      const pathEntries = this.sessionManager.getContextPath();
 
       const preparation = prepareCompaction(pathEntries, settings);
       if (!preparation) {

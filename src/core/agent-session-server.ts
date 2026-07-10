@@ -301,7 +301,7 @@ export class AgentSessionServer {
       leafId: manager?.getLeafId() ?? null,
       messages: stripImagesForTransport(
         buildSessionContext(
-          manager?.getBranch() ?? [],
+          manager?.getContextPath() ?? [],
           manager?.getLeafId() ?? undefined,
         ).messages,
       ),

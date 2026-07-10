@@ -1,6 +1,6 @@
 {
   "name": "@shiit/coding-agent",
-  "version": "0.66.2",
+  "version": "0.66.3",
   "description": "Fork of @mariozechner/pi-coding-agent for Cloudflare Workers",
   "type": "module",
   "main": "./dist/index.js",

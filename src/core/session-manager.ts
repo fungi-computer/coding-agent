@@ -1,4 +1,9 @@
-import type { ImageContent, Message, TextContent } from "@earendil-works/pi-ai";
+import type {
+  AssistantMessage,
+  ImageContent,
+  Message,
+  TextContent,
+} from "@earendil-works/pi-ai";
 import type { AgentMessage } from "@shiit/agent-core";
 
 import { nanoid } from "@shiit/id";
@@ -676,7 +681,18 @@ export class SessionManager {
    * Uses tree traversal from current leaf.
    */
   buildSessionContext(): SessionContext {
-    return buildSessionContext(this.getEntries(), this.leafId, this.byId);
+    // ARCH-161: use the bounded path (firstKeptEntryId ... leaf) for
+    // messages, then overlay session-level settings from
+    // getSessionSettings() so pre-compaction settings are preserved
+    // on restore.
+    const branch = this.getContextPath();
+    const ctx = buildSessionContext(branch, this.leafId, this.byId);
+    const settings = this.getSessionSettings();
+    return {
+      messages: ctx.messages,
+      model: settings.model,
+      thinkingLevel: settings.thinkingLevel,
+    };
   }
 
   // =========================================================================
@@ -826,6 +842,117 @@ export class SessionManager {
       path.unshift(current);
       current = current.parentId ? this.byId.get(current.parentId) : undefined;
     }
+    return path;
+  }
+
+  /**
+   * ARCH-161: Like getBranch(), but stops at the most recent compaction's
+   * firstKeptEntryId. Returns the kept tail (from firstKeptEntryId
+   * onward), the compaction entry, and any post-compaction entries.
+   *
+   * Use this for LLM-context-facing surfaces: snapshot building,
+   * prepareCompaction input, getContextUsage, manual /compact. The
+   * returned path is what buildSessionContext() needs to emit the
+   * correct LLM message list (summary + kept tail + post-compaction).
+   *
+   * Use getBranch() for history-facing surfaces: createBranchedSession,
+   * exportToJsonl, collectEntriesForBranchSummary.
+   */
+  /**
+   * ARCH-161: Get the most recent session-level settings (model,
+   * thinking level) without walking the full parent chain.
+   *
+   * The model comes from the most recent assistant message — the
+   * bounded path is sufficient because the model is always captured
+   * in assistant messages, and the most recent one is post-compaction
+   * (the LLM can't respond post-compaction without a model).
+   *
+   * The thinking level might have been set pre-compaction. To find
+   * it without loading the full path, we scan byId directly for
+   * thinking_level_change entries, looking for the most recent
+   * timestamp. The number of thinking_level_change entries in a
+   * session is small (a handful at most) — a full scan is O(n)
+   * where n is the count of thinking_level_change entries, not
+   * the count of all entries in the session.
+   */
+  getSessionSettings(): {
+    model: { modelId: string; provider: string } | null;
+    thinkingLevel: string;
+  } {
+    // Model: scan the bounded path for the most recent assistant
+    // message (small, bounded, post-compaction only).
+    let model: { modelId: string; provider: string } | null = null;
+    const bounded = this.getContextPath();
+    for (let i = bounded.length - 1; i >= 0; i--) {
+      const e = bounded[i];
+      if (e.type === "model_change" && !model) {
+        model = {
+          modelId: (e as ModelChangeEntry).modelId,
+          provider: (e as ModelChangeEntry).provider,
+        };
+        break;
+      }
+      if (
+        e.type === "message" &&
+        (e as SessionMessageEntry).message.role === "assistant"
+      ) {
+        const am = (e as SessionMessageEntry).message as AssistantMessage;
+        model = { modelId: am.model, provider: am.provider };
+        break;
+      }
+    }
+
+    // Thinking level: scan byId for thinking_level_change entries,
+    // pick the most recent. This is O(k) where k is the number of
+    // thinking_level_change entries in the session (typically <10).
+    let thinkingLevel = "off";
+    let mostRecentTs = "";
+    for (const entry of this.byId.values()) {
+      if (entry.type === "thinking_level_change") {
+        if (entry.timestamp > mostRecentTs) {
+          mostRecentTs = entry.timestamp;
+          thinkingLevel = (entry as ThinkingLevelChangeEntry).thinkingLevel;
+        }
+      }
+    }
+
+    return { model, thinkingLevel };
+  }
+
+  getContextPath(fromId?: string): SessionEntry[] {
+    const path: SessionEntry[] = [];
+    const startId = fromId ?? this.leafId;
+    let current = startId ? this.byId.get(startId) : undefined;
+
+    // Phase 1: walk from leaf to the most recent compaction, collecting entries.
+    let firstKept: string | undefined;
+    while (current) {
+      path.unshift(current);
+      if (current.type === "compaction") {
+        firstKept = (current as CompactionEntry).firstKeptEntryId;
+        break;
+      }
+      current = current.parentId ? this.byId.get(current.parentId) : undefined;
+    }
+
+    // Phase 2: if we found a compaction, continue walking up the parent
+    // chain until we hit its firstKeptEntryId. This adds the kept tail
+    // to the path (buildSessionContext needs the kept tail to emit the
+    // messages that follow the summary). Stop at firstKept (inclusive).
+    if (firstKept) {
+      let tail = current?.parentId
+        ? this.byId.get(current.parentId)
+        : undefined;
+      while (tail) {
+        if (tail.id === firstKept) {
+          path.unshift(tail);
+          break;
+        }
+        path.unshift(tail);
+        tail = tail.parentId ? this.byId.get(tail.parentId) : undefined;
+      }
+    }
+
     return path;
   }
 
