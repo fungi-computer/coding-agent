@@ -325,6 +325,7 @@ export async function createAgentSession(
           auth.headers || options?.headers
             ? { ...auth.headers, ...options?.headers }
             : undefined,
+        sessionId: sessionManager.getSessionId(),
         timeoutMs: options?.timeoutMs ?? providerRetrySettings.timeoutMs,
         maxRetries: options?.maxRetries ?? providerRetrySettings.maxRetries,
         maxRetryDelayMs:
