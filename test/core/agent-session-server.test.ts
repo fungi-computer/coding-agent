@@ -524,110 +524,11 @@ describe("AgentSessionServer", () => {
       await server.stop();
     });
 
-    // ARCH-136: session WS OOMs when the snapshot ships base64 image
-    // tool results to the client. _buildSnapshot must strip image data
-    // from the transport shape; the LLM context builder still gets the
-    // full bytes via in-memory state, so model vision is preserved.
-    test("snapshot strips base64 image data from toolResult messages", async () => {
-      const transport = new InMemoryTransport();
-      const store = new InMemorySessionStore();
-
-      const { sessionId } = await store.createSession("/test");
-
-      const base64 =
-        "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=";
-
-      const imageEntry = {
-        id: "entry-image",
-        parentId: null,
-        timestamp: "2026-07-04T00:00:00.000Z",
-        type: "message" as const,
-        message: {
-          role: "toolResult" as const,
-          toolCallId: "tc-1",
-          toolName: "read_image",
-          content: [
-            { type: "text" as const, text: "Read image file [image/png]" },
-            {
-              type: "image" as const,
-              data: base64,
-              mimeType: "image/png" as const,
-            },
-          ],
-          timestamp: 1,
-          isError: false,
-        },
-      };
-
-      const mockSession = {
-        abort: vi.fn(),
-        compact: vi.fn().mockResolvedValue(undefined),
-        currentMessageId: undefined,
-        cwd: "/test",
-        dispose: vi.fn(),
-        getActiveToolNames: vi.fn().mockReturnValue([]),
-        getContextUsage: vi.fn().mockReturnValue(undefined),
-        getSessionStats: vi.fn().mockReturnValue(undefined),
-        isStreaming: false,
-        leafId: null,
-        model: undefined,
-        navigateTree: vi.fn().mockResolvedValue(undefined),
-        prompt: vi.fn().mockResolvedValue(undefined),
-        sessionId,
-        sessionName: undefined,
-        sessionManager: {
-          getBranch: vi.fn().mockReturnValue([imageEntry]),
-          getContextPath: vi.fn().mockReturnValue([imageEntry]),
-          getCwd: vi.fn().mockReturnValue("/test"),
-          getEntries: vi.fn().mockReturnValue([imageEntry]),
-          getLeafId: vi.fn().mockReturnValue("entry-image"),
-        },
-        setActiveToolsByName: vi.fn(),
-        setModel: vi.fn().mockResolvedValue(undefined),
-        setThinkingLevel: vi.fn(),
-        state: { isStreaming: false, streamingMessage: undefined } as any,
-        subscribe: vi.fn().mockReturnValue(() => {}),
-        thinkingLevel: "medium" as const,
-      };
-
-      const factory = createMockSessionFactory(
-        mockSession as unknown as AgentSession,
-      );
-      const server = new AgentSessionServer(
-        store,
-        factory,
-        mockModelRegistry,
-        transport,
-      );
-
-      await server.start();
-      const snapshot = await server.joinSession(sessionId);
-
-      // Serialize the messages to assert the wire shape
-      const wireShape = JSON.stringify(snapshot.messages);
-      expect(wireShape).not.toContain("iVBORw0KGgo");
-      expect(wireShape).not.toContain(base64);
-
-      // The text part of the tool result is preserved
-      expect(wireShape).toContain("Read image file [image/png]");
-
-      // The image block was replaced with a text placeholder
-      const toolResult = snapshot.messages.find(
-        (m) => m.role === "toolResult",
-      ) as any;
-      expect(toolResult).toBeDefined();
-      const imageBlock = toolResult.content.find(
-        (b: any) => b.type === "image",
-      );
-      expect(imageBlock).toBeUndefined();
-      const placeholder = toolResult.content.find(
-        (b: any) =>
-          b.type === "text" && b.text.includes("omitted from snapshot"),
-      );
-      expect(placeholder).toBeDefined();
-
-      await server.stop();
-    });
+    // ARCH-136: REMOVED in plan-026 Phase 3. The transport-only
+    // base64 strip was obsolete after Phase 1: `read_image`
+    // returns a URL, so there is no base64 in the session to
+    // strip. The behavior is now enforced by construction at
+    // the tool level (read-image-url.test.ts in workspace).
 
     // ARCH-161: _buildSnapshot must use getContextPath() (bounded at the
     // most recent compaction), not getBranch() (full history). Otherwise
