@@ -643,7 +643,9 @@ export class ModelRegistry {
     overrides: Map<string, ProviderOverride>,
     modelOverrides: Map<string, Map<string, ModelOverride>>,
   ): Model<Api>[] {
-    return getProviders().flatMap((provider) => {
+    return getProviders()
+      .filter((provider) => !provider.startsWith("cloudflare"))
+      .flatMap((provider) => {
       const models = getModels(provider as KnownProvider) as Model<Api>[];
       const providerOverride = overrides.get(provider);
       const perModelOverrides = modelOverrides.get(provider);
@@ -701,6 +703,7 @@ export class ModelRegistry {
       for (const [providerName, providerConfig] of Object.entries(
         config.providers,
       )) {
+        if (providerName.startsWith("cloudflare")) continue;
         if (providerConfig.baseUrl || providerConfig.compat) {
           overrides.set(providerName, {
             baseUrl: providerConfig.baseUrl,
@@ -800,6 +803,7 @@ export class ModelRegistry {
     for (const [providerName, providerConfig] of Object.entries(
       config.providers,
     )) {
+      if (providerName.startsWith("cloudflare")) continue;
       const modelDefs = providerConfig.models ?? [];
       if (modelDefs.length === 0) continue; // Override-only, no custom models
 
