@@ -75,6 +75,27 @@ export class InMemorySessionStore implements SessionStore {
       messageCount: s.messages.length,
       modifiedAt: s.modifiedAt,
       name: s.name,
+      preview: s.entries
+        .map((entry: any) => {
+          if (entry.type !== "message") return undefined;
+          const raw = entry.message?.content;
+          if (typeof raw === "string")
+            return raw.trim().slice(0, 200) || undefined;
+          if (Array.isArray(raw)) {
+            return (
+              raw
+                .filter(
+                  (p: any) => p?.type === "text" && typeof p.text === "string",
+                )
+                .map((p: any) => p.text)
+                .join(" ")
+                .trim()
+                .slice(0, 200) || undefined
+            );
+          }
+          return undefined;
+        })
+        .find((p: any) => !!p),
     }));
   }
 

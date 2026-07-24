@@ -199,6 +199,7 @@ export interface SessionListItem {
   messageCount: number;
   modifiedAt: number;
   name?: string;
+  preview?: string;
 }
 
 // ============================================================================

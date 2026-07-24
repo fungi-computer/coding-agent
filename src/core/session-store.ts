@@ -16,6 +16,7 @@ export interface SessionData {
   messages: AgentMessage[];
   modifiedAt: number;
   name?: string;
+  preview?: string;
   sessionId: string;
 }
 
@@ -26,6 +27,7 @@ export interface SessionListItem {
   messageCount: number;
   modifiedAt: number;
   name?: string;
+  preview?: string;
 }
 
 export interface SessionStore {
