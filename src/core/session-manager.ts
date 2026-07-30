@@ -989,6 +989,19 @@ export class SessionManager {
   }
 
   /**
+   * Existence check for an entry type. Use this instead of
+   * `getBranch().some(...)` — the SQLite implementation answers
+   * with a single index lookup, while getBranch walks and parses
+   * the full (uncompacted) parent chain.
+   */
+  hasEntryOfType(type: SessionEntry["type"]): boolean {
+    for (const entry of this.byId.values()) {
+      if (entry.type === type) return true;
+    }
+    return false;
+  }
+
+  /**
    * Get session header.
    */
   getHeader(): null | SessionHeader {

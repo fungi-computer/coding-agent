@@ -25,6 +25,10 @@ export {
 } from "./core/agent-session-server-types.js";
 export { AgentSessionServer } from "./core/agent-session-server.js";
 export {
+  deriveAgentRuntimeStatus,
+  type AgentRuntimeStatus,
+} from "./core/agent-session-status.js";
+export {
   type ConnectionMessage,
   type ServerToClientMessage,
 } from "./core/transport.js";

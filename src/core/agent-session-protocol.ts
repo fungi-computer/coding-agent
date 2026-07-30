@@ -80,6 +80,11 @@ export type ServerMessage =
       readonly message: string;
       readonly sessionId: string;
       readonly type: "error";
+      // PLAN-028 phase 1: typed failure taxonomy for the client
+      // state machine. Optional; `terminal` tells the client to
+      // stop retrying.
+      readonly kind?: string;
+      readonly terminal?: boolean;
     }
   | { readonly type: "version"; readonly version: number };
 
@@ -128,6 +133,11 @@ export const ServerMessageSchema: Schema.Schema<ServerMessage> = Schema.Union(
     message: Schema.String,
     sessionId: Schema.String,
     type: Schema.Literal("error"),
+    // PLAN-028 phase 1: typed failure taxonomy for the client state
+    // machine. Optional so older producers stay wire-compatible;
+    // `terminal` tells the client to stop retrying.
+    kind: Schema.optional(Schema.String),
+    terminal: Schema.optional(Schema.Boolean),
   }),
   Schema.Struct({ type: Schema.Literal("version"), version: Schema.Number }),
 );

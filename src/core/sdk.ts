@@ -183,9 +183,9 @@ export async function createAgentSession(
   // Check if session has existing data to restore
   const existingSession = sessionManager.buildSessionContext();
   const hasExistingSession = existingSession.messages.length > 0;
-  const hasThinkingEntry = sessionManager
-    .getBranch()
-    .some((entry) => entry.type === "thinking_level_change");
+  const hasThinkingEntry = sessionManager.hasEntryOfType(
+    "thinking_level_change",
+  );
 
   let model = options.model;
   let modelFallbackMessage: string | undefined;

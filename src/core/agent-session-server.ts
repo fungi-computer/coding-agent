@@ -19,6 +19,10 @@ import type {
 import type { AgentSession } from "./agent-session.js";
 import type { ModelRegistry } from "./model-registry.js";
 import { buildSessionContext } from "./session-manager.js";
+import {
+  deriveAgentRuntimeStatus,
+  type AgentRuntimeStatus,
+} from "./agent-session-status.js";
 import type { SessionListItem, SessionStore } from "./session-store.js";
 import type { Connection, Transport } from "./transport.js";
 
@@ -49,6 +53,12 @@ interface SessionState {
   subscribers: Set<(event: AgentSessionSyncEvent) => void>;
 }
 
+/**
+ * Max messages included in a WebSocket snapshot. Older history
+ * backfills over HTTP.
+ */
+const SNAPSHOT_MESSAGE_LIMIT = 50;
+
 export class AgentSessionServer {
   private readonly _globalSubscribers = new Set<
     (event: GlobalServerEvent) => void
@@ -59,6 +69,8 @@ export class AgentSessionServer {
 
   private readonly _sessionFactory: SessionFactory;
   private readonly _sessions = new Map<string, SessionState>();
+  private readonly _joinInflight = new Map<string, Promise<void>>();
+  private readonly _sessionStatuses = new Map<string, AgentRuntimeStatus>();
   private readonly _sessionStore: SessionStore;
   private readonly _transport: Transport;
 
@@ -174,40 +186,90 @@ export class AgentSessionServer {
   }
 
   async joinSession(sessionId: string): Promise<SessionSnapshot> {
-    let state = this._sessions.get(sessionId);
-    if (!state) {
-      const data = await this._sessionStore.getSession(sessionId);
-      if (!data) {
-        throw new Error(`Session not found: ${sessionId}`);
-      }
-
-      const session = await this._sessionFactory.createSession({
-        cwd: data.cwd,
-        sessionId,
-      });
-
-      const newState: SessionState = {
-        connections: new Set(),
-        session,
-        subscribers: new Set(),
-      };
-      this._sessions.set(sessionId, newState);
-
-      session.subscribe((event) => {
-        for (const listener of newState.subscribers) {
-          listener(event as AgentSessionSyncEvent);
+    // PLAN-028: single-flight the cold load. Concurrent attaches of
+    // the same session (two tabs, a reconnect racing a hibernation
+    // wake) previously each ran the full factory rebuild — the
+    // duplicate `creating_session` interleaves in production logs.
+    // The second caller now awaits the first's result.
+    if (!this._sessions.has(sessionId)) {
+      const inflight = this._joinInflight.get(sessionId);
+      if (inflight) {
+        await inflight;
+      } else {
+        const load = this.loadSession(sessionId);
+        this._joinInflight.set(sessionId, load);
+        try {
+          await load;
+        } finally {
+          this._joinInflight.delete(sessionId);
         }
-      });
+      }
+    }
+    return await this._buildSnapshot(sessionId, SNAPSHOT_MESSAGE_LIMIT);
+  }
 
-      state = newState;
+  /**
+   * Full-history snapshot for the HTTP snapshot endpoint. Same
+   * single-flight load as `joinSession`, but no message cap — the
+   * dashboard's backfill relies on this returning everything.
+   */
+  async getFullSnapshot(sessionId: string): Promise<SessionSnapshot> {
+    if (!this._sessions.has(sessionId)) {
+      const inflight = this._joinInflight.get(sessionId);
+      if (inflight) {
+        await inflight;
+      } else {
+        const load = this.loadSession(sessionId);
+        this._joinInflight.set(sessionId, load);
+        try {
+          await load;
+        } finally {
+          this._joinInflight.delete(sessionId);
+        }
+      }
+    }
+    return await this._buildSnapshot(sessionId);
+  }
+
+  private async loadSession(sessionId: string): Promise<void> {
+    if (this._sessions.has(sessionId)) return;
+    const data = await this._sessionStore.getSession(sessionId);
+    if (!data) {
+      throw new Error(`Session not found: ${sessionId}`);
     }
 
-    return await this._buildSnapshot(sessionId);
+    const session = await this._sessionFactory.createSession({
+      cwd: data.cwd,
+      sessionId,
+    });
+
+    const newState: SessionState = {
+      connections: new Set(),
+      session,
+      subscribers: new Set(),
+    };
+    this._sessions.set(sessionId, newState);
+
+    session.subscribe((event) => {
+      for (const listener of newState.subscribers) {
+        listener(event as AgentSessionSyncEvent);
+      }
+      this._updateSessionStatus(sessionId, event as AgentSessionSyncEvent);
+    });
+
+    console.log(
+      `[loadSession] sessionId=${sessionId} loadedSessions=${this._sessions.size}`,
+    );
+
+    this._emitSessionStatus(sessionId);
+    this._emitGlobal({ sessionId, type: "session_loaded" });
   }
 
   async leaveSession(sessionId: string): Promise<void> {
     const state = this._sessions.get(sessionId);
     if (state) {
+      this._emitGlobal({ sessionId, type: "session_unloaded" });
+      this._sessionStatuses.delete(sessionId);
       state.session.dispose();
       await this._sessionFactory.closeSession(sessionId);
       this._sessions.delete(sessionId);
@@ -264,7 +326,45 @@ export class AgentSessionServer {
     };
   }
 
-  private async _buildSnapshot(sessionId: string): Promise<SessionSnapshot> {
+  /**
+   * Compute the current runtime status of a loaded session.
+   * Mirrors the logic in `_buildSnapshot`.
+   */
+  private _computeSessionStatus(sessionId: string): AgentRuntimeStatus {
+    const session = this._sessions.get(sessionId)?.session;
+    if (session?.isCompacting) return "compacting";
+    if (session?.isStreaming) {
+      return session.state.streamingMessage != null ? "streaming" : "thinking";
+    }
+    return "idle";
+  }
+
+  private _emitSessionStatus(sessionId: string): void {
+    const status = this._computeSessionStatus(sessionId);
+    this._sessionStatuses.set(sessionId, status);
+    this._emitGlobal({ sessionId, status, type: "session_status_changed" });
+  }
+
+  private _updateSessionStatus(
+    sessionId: string,
+    event: AgentSessionSyncEvent,
+  ): void {
+    const next = deriveAgentRuntimeStatus(event);
+    if (!next) return;
+    const prev = this._sessionStatuses.get(sessionId);
+    if (prev === next) return;
+    this._sessionStatuses.set(sessionId, next);
+    this._emitGlobal({
+      sessionId,
+      status: next,
+      type: "session_status_changed",
+    });
+  }
+
+  private async _buildSnapshot(
+    sessionId: string,
+    messageLimit?: number,
+  ): Promise<SessionSnapshot> {
     const session = this._sessions.get(sessionId)?.session;
     const manager = session?.sessionManager;
 
@@ -285,6 +385,24 @@ export class AgentSessionServer {
     const themesResult = resourceLoader?.getThemes();
     const extensionsResult = resourceLoader?.getExtensions();
 
+    const allMessages = buildSessionContext(
+      manager?.getContextPath() ?? [],
+      manager?.getLeafId() ?? undefined,
+    ).messages;
+    const hasMoreMessages =
+      messageLimit !== undefined && allMessages.length > messageLimit;
+    const messages =
+      messageLimit !== undefined
+        ? allMessages.slice(-messageLimit)
+        : allMessages;
+    // PLAN-028 diagnostics: the OOM investigation. Log what the
+    // snapshot actually holds (count, capped count, serialized size)
+    // plus how many sessions this DO currently has loaded.
+    const serialized = JSON.stringify(messages);
+    console.log(
+      `[_buildSnapshot] sessionId=${sessionId} allMessages=${allMessages.length} capped=${messages.length} jsonBytes=${serialized.length} loadedSessions=${this._sessions.size}`,
+    );
+
     return {
       activeToolNames: session?.getActiveToolNames() ?? [],
       agent: {
@@ -298,11 +416,9 @@ export class AgentSessionServer {
       cost: session?.getSessionStats()?.cost,
       status,
       cwd: manager?.getCwd() ?? "",
+      hasMoreMessages,
       leafId: manager?.getLeafId() ?? null,
-      messages: buildSessionContext(
-        manager?.getContextPath() ?? [],
-        manager?.getLeafId() ?? undefined,
-      ).messages,
+      messages,
       model: session?.model,
       queue: { followUp: [], steering: [] },
       resources: {

@@ -12,6 +12,7 @@ import type { ResourceDiagnostic } from "./diagnostics.js";
 import type { ContextUsage } from "./extensions/types.js";
 import type { BranchSummaryEntry, SessionEntry } from "./session-manager.js";
 import type { SourceInfo } from "./source-info.js";
+import type { AgentRuntimeStatus } from "./agent-session-status.js";
 
 // ============================================================================
 // Session Command (Client → Server)
@@ -154,10 +155,12 @@ export type GlobalServerEvent =
   | { name: string; sessionId: string; type: "session_renamed" }
   | {
       sessionId: string;
-      status: "busy" | "idle" | "retry";
+      status: AgentRuntimeStatus;
       type: "session_status_changed";
     }
   | { sessionId: string; type: "session_deleted" }
+  | { sessionId: string; type: "session_loaded" }
+  | { sessionId: string; type: "session_unloaded" }
   | { type: "server_connected" }
   | { type: "server_shutdown" };
 
@@ -264,6 +267,14 @@ export interface SessionSnapshot {
   cwd: string;
   // Tree position
   leafId: null | string;
+  // Pagination
+  /**
+   * True when `messages` contains only the most recent N (see
+   * SNAPSHOT_MESSAGE_LIMIT in agent-session-server). The client
+   * should backfill older history over HTTP.
+   */
+  hasMoreMessages: boolean;
+
   // Model and thinking
   model?: Model<any>;
 

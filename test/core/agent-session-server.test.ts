@@ -760,4 +760,150 @@ describe("AgentSessionServer", () => {
       await server.stop();
     });
   });
+  describe("snapshot message limit", () => {
+    function buildMessageEntries(count: number) {
+      const entries = [];
+      let prevId: string | null = null;
+      for (let i = 0; i < count; i++) {
+        const id = `msg-${i}`;
+        entries.push({
+          id,
+          parentId: prevId,
+          timestamp: new Date(2026, 0, 1, 0, 0, i).toISOString(),
+          type: "message" as const,
+          message: {
+            role: "user" as const,
+            content: `message ${i}`,
+            timestamp: i,
+          },
+        });
+        prevId = id;
+      }
+      return entries;
+    }
+
+    test("snapshot with more than 50 messages is capped to the last 50 and hasMoreMessages is true", async () => {
+      const transport = new InMemoryTransport();
+      const store = new InMemorySessionStore();
+      const { sessionId } = await store.createSession("/test");
+
+      const entries = buildMessageEntries(60);
+
+      const mockSession = {
+        abort: vi.fn(),
+        compact: vi.fn().mockResolvedValue(undefined),
+        currentMessageId: undefined,
+        cwd: "/test",
+        dispose: vi.fn(),
+        getActiveToolNames: vi.fn().mockReturnValue([]),
+        getContextUsage: vi.fn().mockReturnValue(undefined),
+        getSessionStats: vi.fn().mockReturnValue(undefined),
+        isStreaming: false,
+        leafId: "msg-59",
+        model: undefined,
+        navigateTree: vi.fn().mockResolvedValue(undefined),
+        prompt: vi.fn().mockResolvedValue(undefined),
+        sessionId,
+        sessionName: undefined,
+        sessionManager: {
+          getBranch: vi.fn().mockReturnValue(entries),
+          getContextPath: vi.fn().mockReturnValue(entries),
+          getCwd: vi.fn().mockReturnValue("/test"),
+          getEntries: vi.fn().mockReturnValue(entries),
+          getLeafId: vi.fn().mockReturnValue("msg-59"),
+        },
+        setActiveToolsByName: vi.fn(),
+        setModel: vi.fn().mockResolvedValue(undefined),
+        setThinkingLevel: vi.fn(),
+        state: { isStreaming: false, streamingMessage: undefined } as any,
+        subscribe: vi.fn().mockReturnValue(() => {}),
+        thinkingLevel: "medium" as const,
+      };
+
+      const factory = createMockSessionFactory(
+        mockSession as unknown as AgentSession,
+      );
+      const server = new AgentSessionServer(
+        store,
+        factory,
+        mockModelRegistry,
+        transport,
+      );
+
+      await server.start();
+      const snapshot = await server.joinSession(sessionId);
+
+      expect(snapshot.messages.length).toBe(50);
+      expect(snapshot.hasMoreMessages).toBe(true);
+      expect((snapshot.messages[0] as any).content).toBe("message 10");
+      expect((snapshot.messages[49] as any).content).toBe("message 59");
+
+      // The HTTP backfill path returns full history (uncapped).
+      const full = await server.getFullSnapshot(sessionId);
+      expect(full.messages.length).toBe(60);
+      expect(full.hasMoreMessages).toBe(false);
+      expect((full.messages[0] as any).content).toBe("message 0");
+
+      await server.stop();
+    });
+
+    test("snapshot with 50 or fewer messages includes all and hasMoreMessages is false", async () => {
+      const transport = new InMemoryTransport();
+      const store = new InMemorySessionStore();
+      const { sessionId } = await store.createSession("/test");
+
+      const entries = buildMessageEntries(30);
+
+      const mockSession = {
+        abort: vi.fn(),
+        compact: vi.fn().mockResolvedValue(undefined),
+        currentMessageId: undefined,
+        cwd: "/test",
+        dispose: vi.fn(),
+        getActiveToolNames: vi.fn().mockReturnValue([]),
+        getContextUsage: vi.fn().mockReturnValue(undefined),
+        getSessionStats: vi.fn().mockReturnValue(undefined),
+        isStreaming: false,
+        leafId: "msg-29",
+        model: undefined,
+        navigateTree: vi.fn().mockResolvedValue(undefined),
+        prompt: vi.fn().mockResolvedValue(undefined),
+        sessionId,
+        sessionName: undefined,
+        sessionManager: {
+          getBranch: vi.fn().mockReturnValue(entries),
+          getContextPath: vi.fn().mockReturnValue(entries),
+          getCwd: vi.fn().mockReturnValue("/test"),
+          getEntries: vi.fn().mockReturnValue(entries),
+          getLeafId: vi.fn().mockReturnValue("msg-29"),
+        },
+        setActiveToolsByName: vi.fn(),
+        setModel: vi.fn().mockResolvedValue(undefined),
+        setThinkingLevel: vi.fn(),
+        state: { isStreaming: false, streamingMessage: undefined } as any,
+        subscribe: vi.fn().mockReturnValue(() => {}),
+        thinkingLevel: "medium" as const,
+      };
+
+      const factory = createMockSessionFactory(
+        mockSession as unknown as AgentSession,
+      );
+      const server = new AgentSessionServer(
+        store,
+        factory,
+        mockModelRegistry,
+        transport,
+      );
+
+      await server.start();
+      const snapshot = await server.joinSession(sessionId);
+
+      expect(snapshot.messages.length).toBe(30);
+      expect(snapshot.hasMoreMessages).toBe(false);
+      expect((snapshot.messages[0] as any).content).toBe("message 0");
+      expect((snapshot.messages[29] as any).content).toBe("message 29");
+
+      await server.stop();
+    });
+  });
 });
