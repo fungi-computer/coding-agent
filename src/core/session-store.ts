@@ -37,7 +37,7 @@ export interface SessionStore {
   deleteSession(sessionId: string): Promise<void>;
   getEntries(sessionId: string): Promise<SessionEntry[]>;
 
-  getMessages(sessionId: string): Promise<AgentMessage[]>;
+  getMessages(sessionId: string, limit?: number): Promise<AgentMessage[]>;
   getSession(sessionId: string): Promise<null | SessionData>;
 
   listSessions(): Promise<SessionListItem[]>;

@@ -43,14 +43,14 @@ export async function runPrintMode(
     session = runtimeHost.session;
     await session.bindExtensions({
       commandContextActions: {
-        fork: async (entryId) => {
+        fork: async (entryId: string) => {
           const result = await runtimeHost.fork(entryId);
           if (!result.cancelled) {
             await rebindSession();
           }
           return { cancelled: result.cancelled };
         },
-        navigateTree: async (targetId, navigateOptions) => {
+        navigateTree: async (targetId: string, navigateOptions: any) => {
           const result = await session.navigateTree(targetId, {
             customInstructions: navigateOptions?.customInstructions,
             label: navigateOptions?.label,
@@ -59,7 +59,7 @@ export async function runPrintMode(
           });
           return { cancelled: result.cancelled };
         },
-        newSession: async (newSessionOptions) => {
+        newSession: async (newSessionOptions: any) => {
           const result = await runtimeHost.newSession(newSessionOptions);
           if (!result.cancelled) {
             await rebindSession();
@@ -69,7 +69,7 @@ export async function runPrintMode(
         reload: async () => {
           await session.reload();
         },
-        switchSession: async (sessionPath) => {
+        switchSession: async (sessionPath: string) => {
           const result = await runtimeHost.switchSession(sessionPath);
           if (!result.cancelled) {
             await rebindSession();
@@ -78,7 +78,7 @@ export async function runPrintMode(
         },
         waitForIdle: () => session.agent.waitForIdle(),
       },
-      onError: (err) => {
+      onError: (err: any) => {
         console.error(`Extension error (${err.extensionPath}): ${err.error}`);
       },
     });

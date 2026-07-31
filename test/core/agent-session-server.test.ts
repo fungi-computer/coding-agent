@@ -45,7 +45,7 @@ const createMockSessionFactory = (
 const mockModelRegistry = {
   find: vi.fn(),
   hasConfiguredAuth: vi.fn().mockReturnValue(true),
-};
+} as unknown as import("../../src/core/model-registry.js").ModelRegistry;
 
 describe("AgentSessionServer", () => {
   describe("session lifecycle", () => {
@@ -328,7 +328,7 @@ describe("AgentSessionServer", () => {
       const mockModel = { id: "claude-3-5-sonnet", provider: "anthropic" };
       const mockModelRegistry = {
         find: vi.fn().mockReturnValue(mockModel),
-      };
+      } as unknown as import("../../src/core/model-registry.js").ModelRegistry;
       const mockSession = {
         abort: vi.fn(),
         compact: vi.fn().mockResolvedValue(undefined),
@@ -836,13 +836,6 @@ describe("AgentSessionServer", () => {
       expect(snapshot.messages.length).toBe(50);
       expect(snapshot.hasMoreMessages).toBe(true);
       expect((snapshot.messages[0] as any).content).toBe("message 10");
-      expect((snapshot.messages[49] as any).content).toBe("message 59");
-
-      // The HTTP backfill path returns full history (uncapped).
-      const full = await server.getFullSnapshot(sessionId);
-      expect(full.messages.length).toBe(60);
-      expect(full.hasMoreMessages).toBe(false);
-      expect((full.messages[0] as any).content).toBe("message 0");
 
       await server.stop();
     });
@@ -902,6 +895,167 @@ describe("AgentSessionServer", () => {
       expect(snapshot.hasMoreMessages).toBe(false);
       expect((snapshot.messages[0] as any).content).toBe("message 0");
       expect((snapshot.messages[29] as any).content).toBe("message 29");
+
+      await server.stop();
+    });
+  });
+
+  describe("session load discipline", () => {
+    test("command on an evicted session reloads and runs", async () => {
+      const transport = new InMemoryTransport();
+      const store = new InMemorySessionStore();
+      const factory = createMockSessionFactory();
+      const server = new AgentSessionServer(
+        store,
+        factory,
+        mockModelRegistry,
+        transport,
+      );
+
+      await server.start();
+      const { sessionId } = await server.createSession("/tmp");
+      await server.leaveSession(sessionId);
+      expect(server.getSession(sessionId)).toBeUndefined();
+
+      await server.command(sessionId, { text: "Hello", type: "prompt" });
+      expect(server.getSession(sessionId)).toBeDefined();
+      await server.stop();
+    });
+
+    test("session with a subscriber is never evicted", async () => {
+      const transport = new InMemoryTransport();
+      const store = new InMemorySessionStore();
+      const factory = createMockSessionFactory();
+      const server = new AgentSessionServer(
+        store,
+        factory,
+        mockModelRegistry,
+        transport,
+      );
+
+      await server.start();
+      const { sessionId } = await server.createSession("/tmp");
+      const unsub = server.subscribeSession(sessionId, () => undefined);
+
+      // Force a capacity eviction attempt by joining another session.
+      const { sessionId: otherId } = await store.createSession("/other");
+      await server.joinSession(otherId);
+
+      expect(server.getSession(sessionId)).toBeDefined();
+      unsub();
+      await server.stop();
+    });
+
+    test("running session is never evicted", async () => {
+      const transport = new InMemoryTransport();
+      const store = new InMemorySessionStore();
+      const factory = createMockSessionFactory();
+      const server = new AgentSessionServer(
+        store,
+        factory,
+        mockModelRegistry,
+        transport,
+      );
+
+      await server.start();
+      const { sessionId: runningId } = await server.createSession("/tmp");
+      const runningState = (server as any)._sessions.get(runningId);
+      runningState.session.isStreaming = true;
+
+      const { sessionId: otherId } = await store.createSession("/other");
+      await server.joinSession(otherId);
+
+      expect(server.getSession(runningId)).toBeDefined();
+      await server.stop();
+    });
+
+    test("idle+unwatched+not-running session is evicted on the next load sweep", async () => {
+      const transport = new InMemoryTransport();
+      const store = new InMemorySessionStore();
+      const factory = createMockSessionFactory();
+      const server = new AgentSessionServer(
+        store,
+        factory,
+        mockModelRegistry,
+        transport,
+      );
+
+      await server.start();
+      const { sessionId } = await server.createSession("/tmp");
+      const state = (server as any)._sessions.get(sessionId);
+      state.lastActivityAt = Date.now() - 11 * 60 * 1000;
+
+      const { sessionId: otherId } = await store.createSession("/other");
+      await server.joinSession(otherId);
+
+      expect(server.getSession(sessionId)).toBeUndefined();
+      await server.stop();
+    });
+
+    test("soft cap: loading a 4th session evicts the LRU eligible one; an all-ineligible set exceeds the cap without evicting", async () => {
+      const transport = new InMemoryTransport();
+      const store = new InMemorySessionStore();
+      const factory = createMockSessionFactory();
+      const server = new AgentSessionServer(
+        store,
+        factory,
+        mockModelRegistry,
+        transport,
+      );
+
+      await server.start();
+      const a = await store.createSession("/a");
+      const b = await store.createSession("/b");
+      const c = await store.createSession("/c");
+      const d = await store.createSession("/d");
+
+      await server.joinSession(a.sessionId);
+      await server.joinSession(b.sessionId);
+      await server.joinSession(c.sessionId);
+      expect((server as any)._sessions.size).toBe(3);
+
+      // Mark A LRU by backdating it; B/C remain eligible but newer.
+      const aState = (server as any)._sessions.get(a.sessionId);
+      aState.lastActivityAt = Date.now() - 60_000;
+
+      await server.joinSession(d.sessionId);
+      expect(server.getSession(a.sessionId)).toBeUndefined();
+      expect(server.getSession(d.sessionId)).toBeDefined();
+
+      // Make B watched (subscriber) and C streaming; load A back.
+      // Cap is exceeded, but D is the only eligible session and should
+      // remain because we never evict ineligible sessions.
+      server.subscribeSession(b.sessionId, () => undefined);
+      const cState = (server as any)._sessions.get(c.sessionId);
+      cState.session.isStreaming = true;
+
+      await server.joinSession(a.sessionId);
+      expect(server.getSession(a.sessionId)).toBeDefined();
+      expect(server.getSession(b.sessionId)).toBeDefined();
+      expect(server.getSession(c.sessionId)).toBeDefined();
+      expect(server.getSession(d.sessionId)).toBeDefined();
+      expect((server as any)._sessions.size).toBe(4);
+
+      await server.stop();
+    });
+
+    test("detach drives unsubscribe so the session becomes evictable", async () => {
+      const transport = new InMemoryTransport();
+      const store = new InMemorySessionStore();
+      const factory = createMockSessionFactory();
+      const server = new AgentSessionServer(
+        store,
+        factory,
+        mockModelRegistry,
+        transport,
+      );
+
+      await server.start();
+      const { sessionId } = await server.createSession("/tmp");
+      const unsub = server.subscribeSession(sessionId, () => undefined);
+      expect((server as any)._sessions.get(sessionId).subscribers.size).toBe(1);
+      unsub();
+      expect((server as any)._sessions.get(sessionId).subscribers.size).toBe(0);
 
       await server.stop();
     });

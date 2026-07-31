@@ -32,6 +32,7 @@ export interface SessionHandle {
   compact(reason?: "manual" | "overflow" | "threshold"): Promise<void>;
   readonly cwd: string;
   dispose(): void;
+  readonly isCompacting: boolean;
   readonly isStreaming: boolean;
   readonly leafId: null | string;
   readonly model?: Model<any>;
@@ -48,7 +49,9 @@ export interface SessionHandle {
 }
 
 interface SessionState {
+  busyCount: number;
   connections: Set<Connection>;
+  lastActivityAt: number;
   session: AgentSession;
   subscribers: Set<(event: AgentSessionSyncEvent) => void>;
 }
@@ -58,6 +61,14 @@ interface SessionState {
  * backfills over HTTP.
  */
 const SNAPSHOT_MESSAGE_LIMIT = 50;
+
+/**
+ * PLAN-028 commit 2: session load discipline. The DO keeps only a
+ * handful of sessions hot; idle/unwatched sessions are evicted so
+ * retained memory does not grow monotonically.
+ */
+const MAX_LOADED_SESSIONS = 3;
+const SESSION_IDLE_TIMEOUT_MS = 10 * 60 * 1000;
 
 export class AgentSessionServer {
   private readonly _globalSubscribers = new Set<
@@ -96,36 +107,43 @@ export class AgentSessionServer {
       throw new Error(`Session not found: ${sessionId}`);
     }
 
-    switch (cmd.type) {
-      case "abort":
-        state.session.abort();
-        break;
-      case "compact":
-        await state.session.compact(cmd.reason);
-        break;
-      case "navigate_tree":
-        await state.session.navigateTree(cmd.leafId);
-        break;
-      case "prompt":
-        await state.session.prompt(cmd.text);
-        break;
-      case "set_model": {
-        const resolvedModel = this._modelRegistry.find(
-          cmd.provider ?? "",
-          cmd.modelId,
-        );
-        if (!resolvedModel) {
-          throw new Error(`Model not found: ${cmd.provider}/${cmd.modelId}`);
+    this._sweepEligibleSessions(sessionId);
+    this._markActivity(state);
+    state.busyCount++;
+    try {
+      switch (cmd.type) {
+        case "abort":
+          state.session.abort();
+          break;
+        case "compact":
+          await state.session.compact(cmd.reason);
+          break;
+        case "navigate_tree":
+          await state.session.navigateTree(cmd.leafId);
+          break;
+        case "prompt":
+          await state.session.prompt(cmd.text);
+          break;
+        case "set_model": {
+          const resolvedModel = this._modelRegistry.find(
+            cmd.provider ?? "",
+            cmd.modelId,
+          );
+          if (!resolvedModel) {
+            throw new Error(`Model not found: ${cmd.provider}/${cmd.modelId}`);
+          }
+          await state.session.setModel(resolvedModel);
+          break;
         }
-        await state.session.setModel(resolvedModel);
-        break;
+        case "set_thinking_level":
+          state.session.setThinkingLevel(cmd.level);
+          break;
+        case "set_tools":
+          state.session.setActiveToolsByName(cmd.toolNames);
+          break;
       }
-      case "set_thinking_level":
-        state.session.setThinkingLevel(cmd.level);
-        break;
-      case "set_tools":
-        state.session.setActiveToolsByName(cmd.toolNames);
-        break;
+    } finally {
+      state.busyCount--;
     }
   }
 
@@ -139,8 +157,11 @@ export class AgentSessionServer {
       sessionId,
     });
 
+    const now = Date.now();
     const state: SessionState = {
+      busyCount: 0,
       connections: new Set(),
+      lastActivityAt: now,
       session,
       subscribers: new Set(),
     };
@@ -150,6 +171,8 @@ export class AgentSessionServer {
       for (const listener of state.subscribers) {
         listener(event as AgentSessionSyncEvent);
       }
+      this._markActivity(state);
+      this._updateSessionStatus(sessionId, event as AgentSessionSyncEvent);
     });
 
     const data = await this._sessionStore.getSession(sessionId);
@@ -191,6 +214,7 @@ export class AgentSessionServer {
     // wake) previously each ran the full factory rebuild — the
     // duplicate `creating_session` interleaves in production logs.
     // The second caller now awaits the first's result.
+    this._sweepEligibleSessions(sessionId);
     if (!this._sessions.has(sessionId)) {
       const inflight = this._joinInflight.get(sessionId);
       if (inflight) {
@@ -205,30 +229,12 @@ export class AgentSessionServer {
         }
       }
     }
-    return await this._buildSnapshot(sessionId, SNAPSHOT_MESSAGE_LIMIT);
-  }
 
-  /**
-   * Full-history snapshot for the HTTP snapshot endpoint. Same
-   * single-flight load as `joinSession`, but no message cap — the
-   * dashboard's backfill relies on this returning everything.
-   */
-  async getFullSnapshot(sessionId: string): Promise<SessionSnapshot> {
-    if (!this._sessions.has(sessionId)) {
-      const inflight = this._joinInflight.get(sessionId);
-      if (inflight) {
-        await inflight;
-      } else {
-        const load = this.loadSession(sessionId);
-        this._joinInflight.set(sessionId, load);
-        try {
-          await load;
-        } finally {
-          this._joinInflight.delete(sessionId);
-        }
-      }
-    }
-    return await this._buildSnapshot(sessionId);
+    // Sweep again after the session is loaded: this is where the
+    // soft cap is enforced. The incoming session is protected so we
+    // never evict the session the caller just asked for.
+    this._sweepEligibleSessions(sessionId);
+    return await this._buildSnapshot(sessionId, SNAPSHOT_MESSAGE_LIMIT);
   }
 
   private async loadSession(sessionId: string): Promise<void> {
@@ -243,8 +249,11 @@ export class AgentSessionServer {
       sessionId,
     });
 
+    const now = Date.now();
     const newState: SessionState = {
+      busyCount: 0,
       connections: new Set(),
+      lastActivityAt: now,
       session,
       subscribers: new Set(),
     };
@@ -254,6 +263,7 @@ export class AgentSessionServer {
       for (const listener of newState.subscribers) {
         listener(event as AgentSessionSyncEvent);
       }
+      this._markActivity(newState);
       this._updateSessionStatus(sessionId, event as AgentSessionSyncEvent);
     });
 
@@ -321,9 +331,68 @@ export class AgentSessionServer {
     }
 
     state.subscribers.add(listener);
+    this._markActivity(state);
     return () => {
       state.subscribers.delete(listener);
     };
+  }
+
+  private _markActivity(state: SessionState): void {
+    state.lastActivityAt = Date.now();
+  }
+
+  private _isSessionEligibleForEviction(state: SessionState): boolean {
+    return (
+      state.subscribers.size === 0 &&
+      state.busyCount === 0 &&
+      !state.session.isStreaming &&
+      !state.session.isCompacting
+    );
+  }
+
+  private _evictSession(sessionId: string): void {
+    const state = this._sessions.get(sessionId);
+    if (!state) return;
+    this._emitGlobal({ sessionId, type: "session_unloaded" });
+    this._sessionStatuses.delete(sessionId);
+    state.session.dispose();
+    this._sessions.delete(sessionId);
+    // closeSession is best-effort cleanup of the runtime wrapper.
+    // Storage is the source of truth; evicted sessions reload on
+    // the next join/command.
+    void this._sessionFactory.closeSession(sessionId);
+  }
+
+  /**
+   * PLAN-028 commit 2: lazy eviction. Runs synchronously at the
+   * entry points (`joinSession` and `command`) so the check is
+   * race-free on a single-threaded DO. Eligible sessions are those
+   * with no subscribers, no in-flight commands, and no running
+   * work. Idle sessions older than `SESSION_IDLE_TIMEOUT_MS` are
+   * evicted; if the loaded count exceeds `MAX_LOADED_SESSIONS`, the
+   * least-recently-active eligible session is evicted even when not
+   * idle. Sessions with a live subscriber or running work are never
+   * evicted.
+   */
+  private _sweepEligibleSessions(protectedSessionId?: string): void {
+    const now = Date.now();
+    const eligible: { lastActivityAt: number; sessionId: string }[] = [];
+    for (const [sessionId, state] of this._sessions) {
+      if (sessionId === protectedSessionId) continue;
+      if (this._joinInflight.has(sessionId)) continue;
+      if (!this._isSessionEligibleForEviction(state)) continue;
+      eligible.push({ lastActivityAt: state.lastActivityAt, sessionId });
+    }
+
+    eligible.sort((a, b) => a.lastActivityAt - b.lastActivityAt);
+
+    for (const { lastActivityAt, sessionId } of eligible) {
+      const idle = now - lastActivityAt;
+      const overCap = this._sessions.size > MAX_LOADED_SESSIONS;
+      if (idle >= SESSION_IDLE_TIMEOUT_MS || overCap) {
+        this._evictSession(sessionId);
+      }
+    }
   }
 
   /**
@@ -385,22 +454,17 @@ export class AgentSessionServer {
     const themesResult = resourceLoader?.getThemes();
     const extensionsResult = resourceLoader?.getExtensions();
 
-    const allMessages = buildSessionContext(
+    const ctx = buildSessionContext(
       manager?.getContextPath() ?? [],
       manager?.getLeafId() ?? undefined,
-    ).messages;
-    const hasMoreMessages =
-      messageLimit !== undefined && allMessages.length > messageLimit;
-    const messages =
-      messageLimit !== undefined
-        ? allMessages.slice(-messageLimit)
-        : allMessages;
-    // PLAN-028 diagnostics: the OOM investigation. Log what the
-    // snapshot actually holds (count, capped count, serialized size)
-    // plus how many sessions this DO currently has loaded.
+      undefined,
+      messageLimit,
+    );
+    const hasMoreMessages = ctx.hasMoreMessages ?? false;
+    const messages = ctx.messages;
     const serialized = JSON.stringify(messages);
     console.log(
-      `[_buildSnapshot] sessionId=${sessionId} allMessages=${allMessages.length} capped=${messages.length} jsonBytes=${serialized.length} loadedSessions=${this._sessions.size}`,
+      `[_buildSnapshot] sessionId=${sessionId} messages=${messages.length} hasMore=${hasMoreMessages} jsonBytes=${serialized.length} loadedSessions=${this._sessions.size}`,
     );
 
     return {
@@ -424,7 +488,7 @@ export class AgentSessionServer {
       resources: {
         extensionErrors: extensionsResult?.errors ?? [],
         extensions:
-          extensionsResult?.extensions.map((e) => ({
+          extensionsResult?.extensions.map((e: any) => ({
             path: e.path,
             sourceInfo: e.sourceInfo,
           })) ?? [],

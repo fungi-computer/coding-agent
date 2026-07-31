@@ -28,6 +28,7 @@ const userMessage = (text: string): UserMessage => ({
 });
 
 const assistantMessage = (text: string): AssistantMessage => ({
+  api: "test-api",
   content: [{ text, type: "text" }],
   model: "test-model",
   provider: "test-provider",

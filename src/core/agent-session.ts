@@ -1903,7 +1903,7 @@ export class AgentSession {
     const getCommands = (): SlashCommandInfo[] => {
       const extensionCommands: SlashCommandInfo[] = runner
         .getRegisteredCommands()
-        .map((command) => ({
+        .map((command: any) => ({
           description: command.description,
           name: command.invocationName,
           source: "extension",
@@ -1933,7 +1933,7 @@ export class AgentSession {
 
     runner.bindCore(
       {
-        appendEntry: (customType, data) => {
+        appendEntry: (customType: string, data: unknown) => {
           this.sessionManager.appendCustomEntry(customType, data);
         },
         getActiveTools: () => this.getActiveToolNames(),
@@ -1946,8 +1946,10 @@ export class AgentSession {
         refreshTools: () => {
           void this.refreshTools();
         },
-        sendMessage: (message, options) => {
-          this.sendCustomMessage(message, options).catch((err) => {
+        sendMessage: (message: unknown, options: unknown) => {
+          const castMessage = message as any;
+          const castOptions = options as any;
+          this.sendCustomMessage(castMessage, castOptions).catch((err) => {
             runner.emitError({
               error: err instanceof Error ? err.message : String(err),
               event: "send_message",
@@ -1955,8 +1957,10 @@ export class AgentSession {
             });
           });
         },
-        sendUserMessage: (content, options) => {
-          this.sendUserMessage(content, options).catch((err) => {
+        sendUserMessage: (content: unknown, options: unknown) => {
+          const castContent = content as any;
+          const castUserOptions = options as any;
+          this.sendUserMessage(castContent, castUserOptions).catch((err) => {
             runner.emitError({
               error: err instanceof Error ? err.message : String(err),
               event: "send_user_message",
@@ -1964,8 +1968,9 @@ export class AgentSession {
             });
           });
         },
-        setActiveTools: (toolNames) => this.setActiveToolsByName(toolNames),
-        setLabel: (entryId, label) => {
+        setActiveTools: (toolNames: string[]) =>
+          this.setActiveToolsByName(toolNames),
+        setLabel: (entryId: string, label: string) => {
           this.sessionManager.appendLabelChange(entryId, label);
           this._emit({
             label,
@@ -1973,19 +1978,19 @@ export class AgentSession {
             type: "label_changed",
           });
         },
-        setModel: async (model) => {
+        setModel: async (model: any) => {
           if (!this.modelRegistry.hasConfiguredAuth(model)) return false;
           await this.setModel(model);
           return true;
         },
-        setSessionName: (name) => {
+        setSessionName: (name: string) => {
           this.sessionManager.appendSessionInfo(name);
         },
-        setThinkingLevel: (level) => this.setThinkingLevel(level),
+        setThinkingLevel: (level: any) => this.setThinkingLevel(level),
       },
       {
         abort: () => this.abort(),
-        compact: (options) => {
+        compact: (options: any) => {
           void (async () => {
             try {
               const result = await this.compact(options?.customInstructions);
@@ -2008,11 +2013,11 @@ export class AgentSession {
         },
       },
       {
-        registerProvider: (name, config) => {
+        registerProvider: (name: string, config: any) => {
           this._modelRegistry.registerProvider(name, config);
           this._refreshCurrentModelFromRegistry();
         },
-        unregisterProvider: (name) => {
+        unregisterProvider: (name: string) => {
           this._modelRegistry.unregisterProvider(name);
           this._refreshCurrentModelFromRegistry();
         },
@@ -2411,7 +2416,7 @@ export class AgentSession {
 
     this._emit({
       extensionErrors: extensionsResult.errors,
-      extensions: extensionsResult.extensions.map((e) => ({
+      extensions: extensionsResult.extensions.map((e: any) => ({
         path: e.path,
         sourceInfo: e.sourceInfo,
       })),

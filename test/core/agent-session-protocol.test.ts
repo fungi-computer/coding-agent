@@ -59,6 +59,7 @@ describe("agent-session-protocol", () => {
           themeDiagnostics: [],
           themes: [],
         },
+        hasMoreMessages: false,
         sessionId: "sess_abc",
         thinkingLevel: "medium" as const,
       };
@@ -109,7 +110,7 @@ describe("agent-session-protocol", () => {
   describe("ClientMessage round-trip", () => {
     it("round-trips `command`", () => {
       const msg: ClientMessage = {
-        command: { prompt: "hi", type: "prompt" },
+        command: { text: "hi", type: "prompt" },
         type: "command",
       };
       const parsed = parseClientMessage(serializeClientMessage(msg));

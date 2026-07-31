@@ -134,6 +134,7 @@ export interface SessionContext {
   messages: AgentMessage[];
   model: { modelId: string; provider: string } | null;
   thinkingLevel: string;
+  hasMoreMessages?: boolean;
 }
 
 /** Session entry - has id/parentId for tree structure (returned by "read" methods in SessionManager) */
@@ -680,18 +681,19 @@ export class SessionManager {
    * Build the session context (what gets sent to the LLM).
    * Uses tree traversal from current leaf.
    */
-  buildSessionContext(): SessionContext {
+  buildSessionContext(limit?: number): SessionContext {
     // ARCH-161: use the bounded path (firstKeptEntryId ... leaf) for
     // messages, then overlay session-level settings from
     // getSessionSettings() so pre-compaction settings are preserved
     // on restore.
     const branch = this.getContextPath();
-    const ctx = buildSessionContext(branch, this.leafId, this.byId);
+    const ctx = buildSessionContext(branch, this.leafId, this.byId, limit);
     const settings = this.getSessionSettings();
     return {
       messages: ctx.messages,
       model: settings.model,
       thinkingLevel: settings.thinkingLevel,
+      hasMoreMessages: ctx.hasMoreMessages,
     };
   }
 
@@ -1244,6 +1246,7 @@ export function buildSessionContext(
   entries: SessionEntry[],
   leafId?: null | string,
   byId?: Map<string, SessionEntry>,
+  messageLimit?: number,
 ): SessionContext {
   // Build uuid index if not available
   if (!byId) {
@@ -1369,7 +1372,11 @@ export function buildSessionContext(
     }
   }
 
-  return { messages, model, thinkingLevel };
+  const hasMoreMessages =
+    messageLimit !== undefined && messages.length > messageLimit;
+  const finalMessages =
+    messageLimit !== undefined ? messages.slice(-messageLimit) : messages;
+  return { messages: finalMessages, model, thinkingLevel, hasMoreMessages };
 }
 
 /** Exported for testing */

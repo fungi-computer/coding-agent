@@ -59,8 +59,12 @@ export class InMemorySessionStore implements SessionStore {
     return this.sessions.get(sessionId)?.entries ?? [];
   }
 
-  async getMessages(sessionId: string): Promise<AgentMessage[]> {
-    return this.sessions.get(sessionId)?.messages ?? [];
+  async getMessages(
+    sessionId: string,
+    limit?: number,
+  ): Promise<AgentMessage[]> {
+    const messages = this.sessions.get(sessionId)?.messages ?? [];
+    return limit ? messages.slice(-limit) : messages;
   }
 
   async getSession(sessionId: string): Promise<null | SessionData> {

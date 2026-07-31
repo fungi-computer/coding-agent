@@ -140,7 +140,7 @@ export async function runRpcMode(
    * Create an extension UI context that uses the RPC protocol.
    */
   const createExtensionUIContext = (): ExtensionUIContext => ({
-    confirm: (title, message, opts) =>
+    confirm: (title: string, message: string, opts: any) =>
       createDialogPromise(
         opts,
         false,
@@ -202,7 +202,7 @@ export async function runRpcMode(
       return false;
     },
 
-    input: (title, placeholder, opts) =>
+    input: (title: string, placeholder: string, opts: any) =>
       createDialogPromise(
         opts,
         undefined,
@@ -236,7 +236,7 @@ export async function runRpcMode(
       this.setEditorText(text);
     },
 
-    select: (title, options, opts) =>
+    select: (title: string, options: any, opts: any) =>
       createDialogPromise(
         opts,
         undefined,
@@ -340,14 +340,14 @@ export async function runRpcMode(
     session = runtimeHost.session;
     await session.bindExtensions({
       commandContextActions: {
-        fork: async (entryId) => {
+        fork: async (entryId: string) => {
           const result = await runtimeHost.fork(entryId);
           if (!result.cancelled) {
             await rebindSession();
           }
           return { cancelled: result.cancelled };
         },
-        navigateTree: async (targetId, options) => {
+        navigateTree: async (targetId: string, options: any) => {
           const result = await session.navigateTree(targetId, {
             customInstructions: options?.customInstructions,
             label: options?.label,
@@ -356,7 +356,7 @@ export async function runRpcMode(
           });
           return { cancelled: result.cancelled };
         },
-        newSession: async (options) => {
+        newSession: async (options: any) => {
           const result = await runtimeHost.newSession(options);
           if (!result.cancelled) {
             await rebindSession();
@@ -366,7 +366,7 @@ export async function runRpcMode(
         reload: async () => {
           await session.reload();
         },
-        switchSession: async (sessionPath) => {
+        switchSession: async (sessionPath: string) => {
           const result = await runtimeHost.switchSession(sessionPath);
           if (!result.cancelled) {
             await rebindSession();
@@ -375,7 +375,7 @@ export async function runRpcMode(
         },
         waitForIdle: () => session.agent.waitForIdle(),
       },
-      onError: (err) => {
+      onError: (err: any) => {
         output({
           error: err.error,
           event: err.event,
