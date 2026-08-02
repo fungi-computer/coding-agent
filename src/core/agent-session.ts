@@ -1058,7 +1058,7 @@ export class AgentSession {
    * @returns Text content, or undefined if no assistant message exists
    */
   getLastAssistantText(): string | undefined {
-    const lastAssistant = this.messages
+    const lastAssistantInMessages = this.messages
       .slice()
       .reverse()
       .find((m) => {
@@ -1070,15 +1070,37 @@ export class AgentSession {
         return true;
       });
 
-    if (!lastAssistant) return undefined;
+    const fromMessages = lastAssistantInMessages
+      ? this._extractAssistantText(lastAssistantInMessages as AssistantMessage)
+      : undefined;
+    if (fromMessages) return fromMessages;
 
+    // Fallback to persisted session entries. The LLM-visible message list can
+    // be compacted (assistant messages replaced by a summary) or an aborted
+    // turn may not have materialized text in agent.state.messages. The entries
+    // remain authoritative, so the last persisted assistant entry is the
+    // best available signal.
+    const entries = this.sessionManager.getEntries?.();
+    if (!entries) return undefined;
+    for (let i = entries.length - 1; i >= 0; i--) {
+      const entry = entries[i];
+      if (entry.type === "message" && entry.message.role === "assistant") {
+        const text = this._extractAssistantText(
+          entry.message as AssistantMessage,
+        );
+        if (text) return text;
+      }
+    }
+    return undefined;
+  }
+
+  private _extractAssistantText(message: AssistantMessage): string | undefined {
     let text = "";
-    for (const content of (lastAssistant as AssistantMessage).content) {
+    for (const content of message.content) {
       if (content.type === "text") {
         text += content.text;
       }
     }
-
     return text.trim() || undefined;
   }
 
