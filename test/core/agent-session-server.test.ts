@@ -1060,4 +1060,419 @@ describe("AgentSessionServer", () => {
       await server.stop();
     });
   });
+
+  describe("agent turn system", () => {
+    function deferred<T = void>(): {
+      promise: Promise<T>;
+      reject: (reason?: unknown) => void;
+      resolve: (value: T) => void;
+    } {
+      let resolve: any;
+      let reject: any;
+      const promise = new Promise<T>((res, rej) => {
+        resolve = res;
+        reject = rej;
+      });
+      return { promise, reject, resolve };
+    }
+
+    function makeMockSession(overrides: Partial<any> = {}): any {
+      return {
+        abort: vi.fn(),
+        compact: vi.fn().mockResolvedValue(undefined),
+        dispose: vi.fn(),
+        getActiveToolNames: vi.fn().mockReturnValue([]),
+        getContextUsage: vi.fn().mockReturnValue(undefined),
+        getSessionStats: vi.fn().mockReturnValue(undefined),
+        isCompacting: false,
+        isStreaming: false,
+        navigateTree: vi.fn().mockResolvedValue(undefined),
+        prompt: vi.fn().mockResolvedValue(undefined),
+        sessionId: "",
+        sessionManager: {
+          getBranch: vi.fn().mockReturnValue([]),
+          getContextPath: vi.fn().mockReturnValue([]),
+          getCwd: vi.fn().mockReturnValue("/tmp"),
+          getEntries: vi.fn().mockReturnValue([]),
+          getLeafId: vi.fn().mockReturnValue(null),
+        },
+        setActiveToolsByName: vi.fn(),
+        setModel: vi.fn().mockResolvedValue(undefined),
+        setThinkingLevel: vi.fn(),
+        state: { isStreaming: false, streamingMessage: undefined },
+        subscribe: vi.fn().mockReturnValue(() => {}),
+        thinkingLevel: "medium",
+        ...overrides,
+      };
+    }
+
+    function createStatefulFactory(): {
+      factory: any;
+      sessions: Map<string, any>;
+    } {
+      const sessions = new Map<string, any>();
+      const factory = createMockSessionFactory();
+      factory.createSession = vi.fn(async ({ sessionId }: any) => {
+        if (sessions.has(sessionId)) return sessions.get(sessionId);
+        const s = makeMockSession();
+        s.sessionId = sessionId;
+        sessions.set(sessionId, s);
+        return s;
+      });
+      return { factory, sessions };
+    }
+
+    test("B prompts while A runs → B is queued and A stays active", async () => {
+      const { factory, sessions } = createStatefulFactory();
+      const server = new AgentSessionServer(
+        new InMemorySessionStore(),
+        factory,
+        mockModelRegistry,
+        new InMemoryTransport(),
+      );
+      await server.start();
+      const { sessionId: aId } = await server.createSession("/a");
+      const { sessionId: bId } = await server.createSession("/b");
+      const a = sessions.get(aId)!;
+      const b = sessions.get(bId)!;
+
+      const aRun = deferred();
+      a.prompt = vi.fn(() => aRun.promise);
+
+      const bEvents: any[] = [];
+      server.subscribeSession(bId, (e) => bEvents.push(e));
+
+      const aCommand = server.command(aId, { text: "run A", type: "prompt" });
+      await server.command(bId, { text: "run B", type: "prompt" });
+
+      expect(bEvents).toContainEqual({
+        position: 0,
+        sessionId: bId,
+        type: "queued",
+      });
+      expect((server as any)._activeSessionId).toBe(aId);
+      expect(a.prompt).toHaveBeenCalledWith("run A");
+      expect(b.prompt).not.toHaveBeenCalled();
+
+      aRun.resolve();
+      await aCommand;
+      await server.stop();
+    });
+
+    test("A ends → Bs turn starts and followUps replay", async () => {
+      const { factory, sessions } = createStatefulFactory();
+      const server = new AgentSessionServer(
+        new InMemorySessionStore(),
+        factory,
+        mockModelRegistry,
+        new InMemoryTransport(),
+      );
+      await server.start();
+      const { sessionId: aId } = await server.createSession("/a");
+      const { sessionId: bId } = await server.createSession("/b");
+      const a = sessions.get(aId)!;
+      const b = sessions.get(bId)!;
+
+      const aRun = deferred();
+      a.prompt = vi.fn(() => aRun.promise);
+
+      server.command(aId, { text: "A", type: "prompt" });
+      await server.command(bId, { text: "B-1", type: "prompt" });
+      await server.command(bId, { text: "B-2", type: "prompt" });
+
+      expect((server as any)._turnQueue.length).toBe(1);
+      expect((server as any)._turnQueue[0].followUps).toEqual(["B-2"]);
+
+      aRun.resolve();
+      await new Promise((r) => setTimeout(r, 0));
+
+      expect(b.prompt).toHaveBeenNthCalledWith(1, "B-1");
+      expect(b.prompt).toHaveBeenNthCalledWith(2, "B-2");
+      expect((server as any)._turnQueue.length).toBe(0);
+
+      await server.stop();
+    });
+
+    test("second prompt for queued session appends followUp, no new queue entry", async () => {
+      const { factory, sessions } = createStatefulFactory();
+      const server = new AgentSessionServer(
+        new InMemorySessionStore(),
+        factory,
+        mockModelRegistry,
+        new InMemoryTransport(),
+      );
+      await server.start();
+      const { sessionId: aId } = await server.createSession("/a");
+      const { sessionId: bId } = await server.createSession("/b");
+      const a = sessions.get(aId)!;
+      a.prompt = vi.fn(() => deferred().promise);
+
+      server.command(aId, { text: "A", type: "prompt" });
+      await new Promise((r) => setTimeout(r, 0));
+      await server.command(bId, { text: "B-1", type: "prompt" });
+      await server.command(bId, { text: "B-2", type: "prompt" });
+
+      expect((server as any)._turnQueue.length).toBe(1);
+      expect((server as any)._turnQueue[0].followUps).toEqual(["B-2"]);
+
+      await server.stop();
+    });
+
+    test("interactive lane runs before cron lane", async () => {
+      const { factory, sessions } = createStatefulFactory();
+      const server = new AgentSessionServer(
+        new InMemorySessionStore(),
+        factory,
+        mockModelRegistry,
+        new InMemoryTransport(),
+      );
+      await server.start();
+      const { sessionId: aId } = await server.createSession("/a");
+      const { sessionId: bId } = await server.createSession("/b");
+      const { sessionId: cId } = await server.createSession("/c");
+      const a = sessions.get(aId)!;
+      a.prompt = vi.fn(() => deferred().promise);
+
+      server.command(aId, { text: "A", type: "prompt" });
+      await new Promise((r) => setTimeout(r, 0));
+      await server.command(bId, {
+        lane: "cron",
+        text: "cron-B",
+        type: "prompt",
+      });
+      await server.command(cId, { text: "interactive-C", type: "prompt" });
+
+      const queue = (server as any)._turnQueue;
+      expect(queue.map((e: any) => e.sessionId)).toEqual([cId, bId]);
+
+      await server.stop();
+    });
+
+    test("abort on queued session dequeues it and updates positions", async () => {
+      const { factory, sessions } = createStatefulFactory();
+      const server = new AgentSessionServer(
+        new InMemorySessionStore(),
+        factory,
+        mockModelRegistry,
+        new InMemoryTransport(),
+      );
+      await server.start();
+      const { sessionId: aId } = await server.createSession("/a");
+      const { sessionId: bId } = await server.createSession("/b");
+      const { sessionId: cId } = await server.createSession("/c");
+      const a = sessions.get(aId)!;
+      a.prompt = vi.fn(() => deferred().promise);
+
+      server.command(aId, { text: "A", type: "prompt" });
+      await new Promise((r) => setTimeout(r, 0));
+      await server.command(bId, { text: "B", type: "prompt" });
+      await server.command(cId, { text: "C", type: "prompt" });
+
+      const cEvents: any[] = [];
+      server.subscribeSession(cId, (e) => cEvents.push(e));
+
+      await server.command(bId, { type: "abort" });
+
+      expect((server as any)._turnQueue.map((e: any) => e.sessionId)).toEqual([
+        cId,
+      ]);
+      expect(cEvents).toContainEqual({
+        position: 0,
+        sessionId: cId,
+        type: "queued",
+      });
+
+      await server.stop();
+    });
+
+    test("abort on active session stops run and advances queue", async () => {
+      const { factory, sessions } = createStatefulFactory();
+      const server = new AgentSessionServer(
+        new InMemorySessionStore(),
+        factory,
+        mockModelRegistry,
+        new InMemoryTransport(),
+      );
+      await server.start();
+      const { sessionId: aId } = await server.createSession("/a");
+      const { sessionId: bId } = await server.createSession("/b");
+      const a = sessions.get(aId)!;
+      const b = sessions.get(bId)!;
+
+      const aRun = deferred();
+      a.prompt = vi.fn(() => aRun.promise);
+
+      server.command(aId, { text: "A", type: "prompt" });
+      await new Promise((r) => setTimeout(r, 0));
+      await server.command(bId, { text: "B", type: "prompt" });
+
+      await server.command(aId, { type: "abort" });
+      aRun.resolve();
+      await new Promise((r) => setTimeout(r, 0));
+
+      expect(a.abort).toHaveBeenCalled();
+      expect(b.prompt).toHaveBeenCalledWith("B");
+
+      await server.stop();
+    });
+
+    test("A's run error releases slot and starts Bs turn (wedge regression)", async () => {
+      const { factory, sessions } = createStatefulFactory();
+      const server = new AgentSessionServer(
+        new InMemorySessionStore(),
+        factory,
+        mockModelRegistry,
+        new InMemoryTransport(),
+      );
+      await server.start();
+      const { sessionId: aId } = await server.createSession("/a");
+      const { sessionId: bId } = await server.createSession("/b");
+      const a = sessions.get(aId)!;
+      const b = sessions.get(bId)!;
+
+      const aRun = deferred<void>();
+      a.prompt = vi.fn(() => aRun.promise);
+
+      const aCommand = server.command(aId, { text: "A", type: "prompt" });
+      await new Promise((r) => setTimeout(r, 0));
+      await server.command(bId, { text: "B", type: "prompt" });
+
+      aRun.reject(new Error("upstream timeout"));
+      await expect(aCommand).rejects.toThrow("upstream timeout");
+      await new Promise((r) => setTimeout(r, 0));
+
+      expect(b.prompt).toHaveBeenCalledWith("B");
+
+      await server.stop();
+    });
+
+    test("pass-through commands on queued session execute immediately", async () => {
+      const { factory, sessions } = createStatefulFactory();
+      const server = new AgentSessionServer(
+        new InMemorySessionStore(),
+        factory,
+        mockModelRegistry,
+        new InMemoryTransport(),
+      );
+      await server.start();
+      const { sessionId: aId } = await server.createSession("/a");
+      const { sessionId: bId } = await server.createSession("/b");
+      const a = sessions.get(aId)!;
+      const b = sessions.get(bId)!;
+      a.prompt = vi.fn(() => deferred().promise);
+
+      server.command(aId, { text: "A", type: "prompt" });
+      await new Promise((r) => setTimeout(r, 0));
+      await server.command(bId, { text: "B", type: "prompt" });
+      await server.command(bId, { leafId: "leaf-1", type: "navigate_tree" });
+
+      expect(b.navigateTree).toHaveBeenCalledWith("leaf-1");
+      expect((server as any)._turnQueue.length).toBe(1);
+
+      await server.stop();
+    });
+
+    test("new server has empty queue", async () => {
+      const server = new AgentSessionServer(
+        new InMemorySessionStore(),
+        createMockSessionFactory(),
+        mockModelRegistry,
+        new InMemoryTransport(),
+      );
+      await server.start();
+      expect((server as any)._turnQueue).toEqual([]);
+      expect((server as any)._activeSessionId).toBeNull();
+      await server.stop();
+    });
+
+    test("evicting queued session drops it without affecting active slot", async () => {
+      const { factory, sessions } = createStatefulFactory();
+      const server = new AgentSessionServer(
+        new InMemorySessionStore(),
+        factory,
+        mockModelRegistry,
+        new InMemoryTransport(),
+      );
+      await server.start();
+      const { sessionId: aId } = await server.createSession("/a");
+      const { sessionId: bId } = await server.createSession("/b");
+      const a = sessions.get(aId)!;
+      const b = sessions.get(bId)!;
+      a.prompt = vi.fn(() => deferred().promise);
+
+      server.command(aId, { text: "A", type: "prompt" });
+      await new Promise((r) => setTimeout(r, 0));
+      await server.command(bId, { text: "B", type: "prompt" });
+
+      (server as any)._evictSession(bId);
+
+      expect((server as any)._turnQueue.length).toBe(0);
+      expect((server as any)._activeSessionId).toBe(aId);
+      expect(b.prompt).not.toHaveBeenCalled();
+
+      await server.stop();
+    });
+
+    test("followUps cap and global queue cap emit error frames", async () => {
+      const { factory, sessions } = createStatefulFactory();
+      const server = new AgentSessionServer(
+        new InMemorySessionStore(),
+        factory,
+        mockModelRegistry,
+        new InMemoryTransport(),
+      );
+      await server.start();
+
+      // A holds the active slot with a never-resolving run.
+      const { sessionId: aId } = await server.createSession("/a");
+      const a = sessions.get(aId)!;
+      a.prompt = vi.fn(() => deferred().promise);
+      server.command(aId, { text: "A", type: "prompt" });
+      await new Promise((r) => setTimeout(r, 0));
+
+      // B is queued. The first prompt creates the queue entry; the next 20
+      // become followUps. The 22nd prompt for B exceeds the followUps cap.
+      const { sessionId: bId } = await server.createSession("/b");
+      server.subscribeSession(bId, () => undefined);
+      for (let i = 0; i < 21; i++) {
+        await server.command(bId, { text: `B-${i}`, type: "prompt" });
+      }
+
+      const bEvents: any[] = [];
+      server.subscribeSession(bId, (e) => bEvents.push(e));
+      await server.command(bId, { text: "B-overflow", type: "prompt" });
+
+      expect(bEvents).toContainEqual({
+        kind: "followups_full",
+        terminal: false,
+        type: "error",
+      });
+
+      // Fill the global queue to 16 entries using separate, watched sessions.
+      const unsubs: (() => void)[] = [];
+      for (let i = 0; i < 15; i++) {
+        const { sessionId } = await server.createSession(`/fill-${i}`);
+        unsubs.push(server.subscribeSession(sessionId, () => undefined));
+        await server.command(sessionId, {
+          text: `fill-${i}`,
+          type: "prompt",
+        });
+      }
+
+      const lastEvents: any[] = [];
+      const { sessionId: lastId } = await server.createSession("/last");
+      unsubs.push(server.subscribeSession(lastId, () => undefined));
+      server.subscribeSession(lastId, (e) => lastEvents.push(e));
+      await server.command(lastId, { text: "too many", type: "prompt" });
+
+      expect(lastEvents).toContainEqual({
+        kind: "queue_full",
+        terminal: false,
+        type: "error",
+      });
+
+      for (const unsub of unsubs) unsub();
+      await server.stop();
+    });
+  });
 });

@@ -10,17 +10,13 @@ import {
   getProviders,
   type KnownProvider,
   type Model,
-  type OAuthProviderInterface,
   type OpenAICompletionsCompat,
   type OpenAIResponsesCompat,
   registerApiProvider,
   resetApiProviders,
   type SimpleStreamOptions,
 } from "@earendil-works/pi-ai/compat";
-import {
-  registerOAuthProvider,
-  resetOAuthProviders,
-} from "@earendil-works/pi-ai/oauth";
+
 import { type Static, Type } from "typebox";
 import { Compile } from "typebox/compile";
 import { existsSync, readFileSync } from "fs";
@@ -353,8 +349,6 @@ export interface ProviderConfigInput {
     name: string;
     reasoning: boolean;
   }[];
-  /** OAuth provider for /login support */
-  oauth?: Omit<OAuthProviderInterface, "id">;
   streamSimple?: (
     model: Model<Api>,
     context: Context,
@@ -524,7 +518,6 @@ export class ModelRegistry {
 
     // Ensure dynamic API/OAuth registrations are rebuilt from current provider state.
     resetApiProviders();
-    resetOAuthProviders();
 
     this.loadModels();
 
@@ -565,15 +558,7 @@ export class ModelRegistry {
     providerName: string,
     config: ProviderConfigInput,
   ): void {
-    // Register OAuth provider if provided
-    if (config.oauth) {
-      // Ensure the OAuth provider ID matches the provider name
-      const oauthProvider: OAuthProviderInterface = {
-        ...config.oauth,
-        id: providerName,
-      };
-      registerOAuthProvider(oauthProvider);
-    }
+    // OAuth provider configuration is no longer supported in pi-ai 0.83.0.
 
     if (config.streamSimple) {
       const streamSimple = config.streamSimple;
@@ -614,14 +599,6 @@ export class ModelRegistry {
           reasoning: modelDef.reasoning,
         } as Model<Api>);
       }
-
-      // Apply OAuth modifyModels if credentials exist (e.g., to update baseUrl)
-      if (config.oauth?.modifyModels) {
-        const cred = this.authStorage.get(providerName);
-        if (cred?.type === "oauth") {
-          this.models = config.oauth.modifyModels(this.models, cred);
-        }
-      }
     } else if (config.baseUrl || config.headers) {
       // Override-only: update baseUrl for existing models. Request headers are resolved per request.
       this.models = this.models.map((m) => {
@@ -646,31 +623,31 @@ export class ModelRegistry {
     return getProviders()
       .filter((provider) => !provider.startsWith("cloudflare"))
       .flatMap((provider) => {
-      const models = getModels(provider as KnownProvider) as Model<Api>[];
-      const providerOverride = overrides.get(provider);
-      const perModelOverrides = modelOverrides.get(provider);
+        const models = getModels(provider as any) as Model<Api>[];
+        const providerOverride = overrides.get(provider);
+        const perModelOverrides = modelOverrides.get(provider);
 
-      return models.map((m) => {
-        let model = m;
+        return models.map((m) => {
+          let model = m;
 
-        // Apply provider-level baseUrl/headers/compat override
-        if (providerOverride) {
-          model = {
-            ...model,
-            baseUrl: providerOverride.baseUrl ?? model.baseUrl,
-            compat: mergeCompat(model.compat, providerOverride.compat),
-          };
-        }
+          // Apply provider-level baseUrl/headers/compat override
+          if (providerOverride) {
+            model = {
+              ...model,
+              baseUrl: providerOverride.baseUrl ?? model.baseUrl,
+              compat: mergeCompat(model.compat, providerOverride.compat),
+            };
+          }
 
-        // Apply per-model override
-        const modelOverride = perModelOverrides?.get(m.id);
-        if (modelOverride) {
-          model = applyModelOverride(model, modelOverride);
-        }
+          // Apply per-model override
+          const modelOverride = perModelOverrides?.get(m.id);
+          if (modelOverride) {
+            model = applyModelOverride(model, modelOverride);
+          }
 
-        return model;
+          return model;
+        });
       });
-    });
   }
 
   private loadCustomModels(modelsJsonPath: string): CustomModelsResult {
@@ -766,14 +743,6 @@ export class ModelRegistry {
 
     const builtInModels = this.loadBuiltInModels(overrides, modelOverrides);
     let combined = this.mergeCustomModels(builtInModels, customModels);
-
-    // Let OAuth providers modify their models (e.g., update baseUrl)
-    for (const oauthProvider of this.authStorage.getOAuthProviders()) {
-      const cred = this.authStorage.get(oauthProvider.id);
-      if (cred?.type === "oauth" && oauthProvider.modifyModels) {
-        combined = oauthProvider.modifyModels(combined, cred);
-      }
-    }
 
     this.models = combined;
   }
@@ -952,9 +921,9 @@ export class ModelRegistry {
         `Provider ${providerName}: "baseUrl" is required when defining models.`,
       );
     }
-    if (!config.apiKey && !config.oauth) {
+    if (!config.apiKey) {
       throw new Error(
-        `Provider ${providerName}: "apiKey" or "oauth" is required when defining models.`,
+        `Provider ${providerName}: "apiKey" is required when defining models.`,
       );
     }
 

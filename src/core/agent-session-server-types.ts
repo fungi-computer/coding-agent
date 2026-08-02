@@ -62,6 +62,7 @@ export type AgentSessionSyncEvent =
     }
 
   // Tools
+  | { position: number; sessionId: string; type: "queued" }
   | {
       followUp: readonly string[];
       steering: readonly string[];
@@ -113,7 +114,13 @@ export type AgentSessionSyncEvent =
   | { turnIndex: number; type: "turn_start" }
   | { type: "agent_end" }
   | { type: "agent_start" }
-  | { cost?: number; type: "context_usage_changed"; usage?: ContextUsage };
+  | { kind: "queue_full"; terminal: false; type: "error" }
+  | { kind: "followups_full"; terminal: false; type: "error" }
+  | {
+      cost?: number;
+      type: "context_usage_changed";
+      usage?: ContextUsage;
+    };
 
 // ============================================================================
 // Client/Server Message (over WebSocket)
@@ -178,8 +185,12 @@ export type SessionCommand =
   | { leafId: string; type: "navigate_tree" }
   | { level: ThinkingLevel; type: "set_thinking_level" }
   | { modelId: string; provider?: string; type: "set_model" }
-  | { reason?: "manual" | "overflow" | "threshold"; type: "compact" }
-  | { text: string; type: "prompt" }
+  | {
+      lane?: "interactive" | "cron";
+      reason?: "manual" | "overflow" | "threshold";
+      type: "compact";
+    }
+  | { lane?: "interactive" | "cron"; text: string; type: "prompt" }
   | { toolNames: string[]; type: "set_tools" }
   | { type: "abort" };
 

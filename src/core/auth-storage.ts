@@ -9,14 +9,20 @@
 import {
   getEnvApiKey,
   type OAuthCredentials,
-  type OAuthLoginCallbacks,
-  type OAuthProviderId,
 } from "@earendil-works/pi-ai/compat";
-import {
-  getOAuthApiKey,
-  getOAuthProvider,
-  getOAuthProviders,
-} from "@earendil-works/pi-ai/oauth";
+
+// pi-ai 0.83.0 removed OAuth runtime helpers; stub them out so the legacy
+// methods degrade gracefully when OAuth providers are unused.
+function getOAuthProvider(_providerId: string): undefined {
+  return undefined;
+}
+async function getOAuthApiKey(
+  _providerId: string,
+  _oauthCreds: Record<string, OAuthCredentials>,
+): Promise<{ apiKey: string; newCredentials: OAuthCredentials } | undefined> {
+  return undefined;
+}
+
 import {
   chmodSync,
   existsSync,
@@ -134,44 +140,8 @@ export class AuthStorage {
     }
 
     if (cred?.type === "oauth") {
-      const provider = getOAuthProvider(providerId);
-      if (!provider) {
-        // Unknown OAuth provider, can't get API key
-        return undefined;
-      }
-
-      // Check if token needs refresh
-      const needsRefresh = Date.now() >= cred.expires;
-
-      if (needsRefresh) {
-        // Use locked refresh to prevent race conditions
-        try {
-          const result = await this.refreshOAuthTokenWithLock(providerId);
-          if (result) {
-            return result.apiKey;
-          }
-        } catch (error) {
-          this.recordError(error);
-          // Refresh failed - re-read file to check if another instance succeeded
-          this.reload();
-          const updatedCred = this.data[providerId];
-
-          if (
-            updatedCred?.type === "oauth" &&
-            Date.now() < updatedCred.expires
-          ) {
-            // Another instance refreshed successfully, use those credentials
-            return provider.getApiKey(updatedCred);
-          }
-
-          // Refresh truly failed - return undefined so model discovery skips this provider
-          // User can /login to re-authenticate (credentials preserved for retry)
-          return undefined;
-        }
-      } else {
-        // Token not expired, use current access token
-        return provider.getApiKey(cred);
-      }
+      // OAuth is not supported in pi-ai 0.83.0.
+      return undefined;
     }
 
     // Fall back to environment variable
@@ -190,7 +160,7 @@ export class AuthStorage {
    * Get all registered OAuth providers
    */
   getOAuthProviders() {
-    return getOAuthProviders();
+    return [];
   }
 
   /**
@@ -222,17 +192,8 @@ export class AuthStorage {
   /**
    * Login to an OAuth provider.
    */
-  async login(
-    providerId: OAuthProviderId,
-    callbacks: OAuthLoginCallbacks,
-  ): Promise<void> {
-    const provider = getOAuthProvider(providerId);
-    if (!provider) {
-      throw new Error(`Unknown OAuth provider: ${providerId}`);
-    }
-
-    const credentials = await provider.login(callbacks);
-    this.set(providerId, { type: "oauth", ...credentials });
+  async login(providerId: string, _callbacks: unknown): Promise<void> {
+    throw new Error(`OAuth login is not supported (provider: ${providerId}).`);
   }
 
   /**
@@ -339,55 +300,12 @@ export class AuthStorage {
   }
 
   /**
-   * Refresh OAuth token with backend locking to prevent race conditions.
-   * Multiple pi instances may try to refresh simultaneously when tokens expire.
+   * OAuth token refresh is not supported in pi-ai 0.83.0.
    */
   private async refreshOAuthTokenWithLock(
-    providerId: OAuthProviderId,
+    _providerId: string,
   ): Promise<{ apiKey: string; newCredentials: OAuthCredentials } | null> {
-    const provider = getOAuthProvider(providerId);
-    if (!provider) {
-      return null;
-    }
-
-    const result = await this.storage.withLockAsync(async (current) => {
-      const currentData = this.parseStorageData(current);
-      this.data = currentData;
-      this.loadError = null;
-
-      const cred = currentData[providerId];
-      if (cred?.type !== "oauth") {
-        return { result: null };
-      }
-
-      if (Date.now() < cred.expires) {
-        return {
-          result: { apiKey: provider.getApiKey(cred), newCredentials: cred },
-        };
-      }
-
-      const oauthCreds: Record<string, OAuthCredentials> = {};
-      for (const [key, value] of Object.entries(currentData)) {
-        if (value.type === "oauth") {
-          oauthCreds[key] = value;
-        }
-      }
-
-      const refreshed = await getOAuthApiKey(providerId, oauthCreds);
-      if (!refreshed) {
-        return { result: null };
-      }
-
-      const merged: AuthStorageData = {
-        ...currentData,
-        [providerId]: { type: "oauth", ...refreshed.newCredentials },
-      };
-      this.data = merged;
-      this.loadError = null;
-      return { next: JSON.stringify(merged, null, 2), result: refreshed };
-    });
-
-    return result;
+    return null;
   }
 }
 

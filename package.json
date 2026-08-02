@@ -28,7 +28,7 @@
   "dependencies": {
     "@mariozechner/jiti": "^2.6.2",
     "effect": "^3.21.0",
-    "@earendil-works/pi-ai": "^0.80.2",
+    "@earendil-works/pi-ai": "0.83.0",
     "@shiit/agent-core": "^0.66.2",
     "@shiit/id": "^0.1.1",
     "typebox": "^1.1.38",

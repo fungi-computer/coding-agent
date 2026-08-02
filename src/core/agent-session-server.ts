@@ -56,6 +56,13 @@ interface SessionState {
   subscribers: Set<(event: AgentSessionSyncEvent) => void>;
 }
 
+interface TurnQueueEntry {
+  command: Extract<SessionCommand, { type: "prompt" } | { type: "compact" }>;
+  followUps: string[];
+  lane: "cron" | "interactive";
+  sessionId: string;
+}
+
 /**
  * Max messages included in a WebSocket snapshot. Older history
  * backfills over HTTP.
@@ -77,6 +84,11 @@ export class AgentSessionServer {
   private readonly _modelRegistry: ModelRegistry;
   private _running = false;
   private _sequenceId = 0;
+
+  /** Active prompt/compact run, if any. */
+  private _activeSessionId: null | string = null;
+  /** Pending turns for sessions that arrived while another run held the slot. */
+  private _turnQueue: TurnQueueEntry[] = [];
 
   private readonly _sessionFactory: SessionFactory;
   private readonly _sessions = new Map<string, SessionState>();
@@ -109,44 +121,31 @@ export class AgentSessionServer {
 
     this._sweepEligibleSessions(sessionId);
     this._markActivity(state);
-    state.busyCount++;
-    try {
-      switch (cmd.type) {
-        case "abort":
-          state.session.abort();
-          break;
-        case "compact":
-          await state.session.compact(cmd.reason);
-          break;
-        case "navigate_tree":
-          await state.session.navigateTree(cmd.leafId);
-          break;
-        case "prompt":
-          await state.session.prompt(cmd.text);
-          break;
-        case "set_model": {
-          const resolvedModel = this._modelRegistry.find(
-            cmd.provider ?? "",
-            cmd.modelId,
-          );
-          if (!resolvedModel) {
-            throw new Error(`Model not found: ${cmd.provider}/${cmd.modelId}`);
-          }
-          await state.session.setModel(resolvedModel);
-          break;
-        }
-        case "set_thinking_level":
-          state.session.setThinkingLevel(cmd.level);
-          break;
-        case "set_tools":
-          state.session.setActiveToolsByName(cmd.toolNames);
-          break;
-      }
-    } finally {
-      state.busyCount--;
-    }
-  }
 
+    // Only prompt/compact compete for the single active run slot.
+    if (cmd.type !== "prompt" && cmd.type !== "compact") {
+      return this._executePassThroughCommand(state, cmd);
+    }
+
+    // Same active session: let core's steering/followUp handle it.
+    if (this._activeSessionId === sessionId) {
+      if (cmd.type === "prompt") {
+        await state.session.prompt(cmd.text);
+      } else {
+        await state.session.compact(cmd.reason);
+      }
+      return;
+    }
+
+    // No active run: acquire the slot and execute now.
+    if (this._activeSessionId === null) {
+      await this._executeTurn(state, cmd);
+      return;
+    }
+
+    // Another session is active: enqueue (or append followUp).
+    this._enqueuePromptOrCompact(sessionId, cmd);
+  }
   async createSession(
     cwd: string,
   ): Promise<{ sessionId: string; snapshot: SessionSnapshot }> {
@@ -267,10 +266,6 @@ export class AgentSessionServer {
       this._updateSessionStatus(sessionId, event as AgentSessionSyncEvent);
     });
 
-    console.log(
-      `[loadSession] sessionId=${sessionId} loadedSessions=${this._sessions.size}`,
-    );
-
     this._emitSessionStatus(sessionId);
     this._emitGlobal({ sessionId, type: "session_loaded" });
   }
@@ -337,6 +332,198 @@ export class AgentSessionServer {
     };
   }
 
+  private _executePassThroughCommand(
+    state: SessionState,
+    cmd: SessionCommand,
+  ): Promise<void> | void {
+    state.busyCount++;
+    try {
+      switch (cmd.type) {
+        case "abort":
+          this._abortCommand(state);
+          break;
+        case "navigate_tree":
+          return state.session.navigateTree(cmd.leafId).then(() => {});
+        case "set_model": {
+          const resolvedModel = this._modelRegistry.find(
+            cmd.provider ?? "",
+            cmd.modelId,
+          );
+          if (!resolvedModel) {
+            throw new Error(`Model not found: ${cmd.provider}/${cmd.modelId}`);
+          }
+          return this._wrapSetModel(state, resolvedModel);
+        }
+        case "set_thinking_level":
+          state.session.setThinkingLevel(cmd.level);
+          break;
+        case "set_tools":
+          state.session.setActiveToolsByName(cmd.toolNames);
+          break;
+      }
+    } finally {
+      state.busyCount--;
+    }
+  }
+
+  private async _wrapSetModel(
+    state: SessionState,
+    model: Model<any>,
+  ): Promise<void> {
+    await state.session.setModel(model);
+  }
+
+  private _abortCommand(state: SessionState): void {
+    const idx = this._turnQueue.findIndex(
+      (e) => e.sessionId === state.session.sessionId,
+    );
+    if (idx !== -1) {
+      this._turnQueue.splice(idx, 1);
+      this._notifyQueuePositionUpdates();
+    }
+    state.session.abort();
+  }
+
+  private async _executeTurn(
+    state: SessionState,
+    cmd: SessionCommand,
+  ): Promise<void> {
+    const sessionId = state.session.sessionId;
+    this._activeSessionId = sessionId;
+    state.busyCount++;
+    try {
+      if (cmd.type === "prompt") {
+        await state.session.prompt(cmd.text);
+      } else if (cmd.type === "compact") {
+        await state.session.compact(cmd.reason);
+      }
+    } finally {
+      state.busyCount--;
+      this._activeSessionId = null;
+      this._advanceQueue();
+    }
+  }
+
+  private _enqueuePromptOrCompact(
+    sessionId: string,
+    cmd: Extract<SessionCommand, { type: "prompt" } | { type: "compact" }>,
+  ): void {
+    const existing = this._turnQueue.find((e) => e.sessionId === sessionId);
+
+    if (existing) {
+      if (cmd.type === "prompt") {
+        if (existing.followUps.length >= 20) {
+          this._emitToSession(sessionId, {
+            kind: "followups_full",
+            terminal: false,
+            type: "error",
+          });
+          return;
+        }
+        existing.followUps.push(cmd.text);
+      } else {
+        // compact supersedes the pending turn.
+        existing.command = cmd;
+      }
+      this._notifyQueuePositionUpdates();
+      return;
+    }
+
+    if (this._turnQueue.length >= 16) {
+      this._emitToSession(sessionId, {
+        kind: "queue_full",
+        terminal: false,
+        type: "error",
+      });
+      return;
+    }
+
+    const entry: TurnQueueEntry = {
+      command: cmd,
+      followUps: [],
+      lane: cmd.lane ?? "interactive",
+      sessionId,
+    };
+    this._insertQueueEntry(entry);
+    this._notifyQueuePositionUpdates();
+  }
+
+  private _insertQueueEntry(entry: TurnQueueEntry): void {
+    // interactive lanes run before cron lanes; FIFO within a lane.
+    let insertIndex = this._turnQueue.length;
+    for (let i = 0; i < this._turnQueue.length; i++) {
+      if (entry.lane === "interactive" && this._turnQueue[i].lane === "cron") {
+        insertIndex = i;
+        break;
+      }
+    }
+    this._turnQueue.splice(insertIndex, 0, entry);
+  }
+
+  private _advanceQueue(): void {
+    if (this._turnQueue.length === 0) return;
+    if (this._activeSessionId !== null) return;
+
+    const entry = this._turnQueue.shift();
+    if (!entry) return;
+
+    const state = this._sessions.get(entry.sessionId);
+    if (!state) {
+      // Session was evicted while queued; keep draining.
+      this._advanceQueue();
+      return;
+    }
+
+    this._activeSessionId = entry.sessionId;
+    this._notifyQueuePositionUpdates();
+    void this._runQueuedEntry(state, entry);
+  }
+
+  private async _runQueuedEntry(
+    state: SessionState,
+    entry: TurnQueueEntry,
+  ): Promise<void> {
+    state.busyCount++;
+    try {
+      if (entry.command.type === "prompt") {
+        await state.session.prompt(entry.command.text);
+      } else if (entry.command.type === "compact") {
+        await state.session.compact(entry.command.reason);
+      }
+
+      for (const text of entry.followUps) {
+        await state.session.prompt(text);
+      }
+    } finally {
+      state.busyCount--;
+      this._activeSessionId = null;
+      this._advanceQueue();
+      this._notifyQueuePositionUpdates();
+    }
+  }
+
+  private _notifyQueuePositionUpdates(): void {
+    for (let i = 0; i < this._turnQueue.length; i++) {
+      const entry = this._turnQueue[i];
+      this._emitToSession(entry.sessionId, {
+        position: i,
+        sessionId: entry.sessionId,
+        type: "queued",
+      });
+    }
+  }
+
+  private _emitToSession(
+    sessionId: string,
+    event: AgentSessionSyncEvent,
+  ): void {
+    const state = this._sessions.get(sessionId);
+    if (!state) return;
+    for (const listener of state.subscribers) {
+      listener(event);
+    }
+  }
+
   private _markActivity(state: SessionState): void {
     state.lastActivityAt = Date.now();
   }
@@ -357,6 +544,17 @@ export class AgentSessionServer {
     this._sessionStatuses.delete(sessionId);
     state.session.dispose();
     this._sessions.delete(sessionId);
+    // Drop any queued turn for the evicted session without affecting
+    // the active slot or other entries.
+    const hadQueueEntry = this._turnQueue.some(
+      (e) => e.sessionId === sessionId,
+    );
+    if (hadQueueEntry) {
+      this._turnQueue = this._turnQueue.filter(
+        (e) => e.sessionId !== sessionId,
+      );
+      this._notifyQueuePositionUpdates();
+    }
     // closeSession is best-effort cleanup of the runtime wrapper.
     // Storage is the source of truth; evicted sessions reload on
     // the next join/command.
@@ -447,9 +645,6 @@ export class AgentSessionServer {
 
     const resourceLoader = session?.resourceLoader;
     const skillsResult = resourceLoader?.getSkills();
-    console.log(
-      `[_buildSnapshot] sessionId=${sessionId} hasSession=${!!session} hasResourceLoader=${!!resourceLoader} skillsCount=${skillsResult?.skills.length ?? -1}`,
-    );
     const promptsResult = resourceLoader?.getPrompts();
     const themesResult = resourceLoader?.getThemes();
     const extensionsResult = resourceLoader?.getExtensions();
@@ -462,10 +657,6 @@ export class AgentSessionServer {
     );
     const hasMoreMessages = ctx.hasMoreMessages ?? false;
     const messages = ctx.messages;
-    const serialized = JSON.stringify(messages);
-    console.log(
-      `[_buildSnapshot] sessionId=${sessionId} messages=${messages.length} hasMore=${hasMoreMessages} jsonBytes=${serialized.length} loadedSessions=${this._sessions.size}`,
-    );
 
     return {
       activeToolNames: session?.getActiveToolNames() ?? [],
