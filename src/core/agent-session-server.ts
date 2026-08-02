@@ -16,7 +16,7 @@ import type {
   GlobalServerEvent,
   SessionCommand,
 } from "./agent-session-server-types.js";
-import type { AgentSession } from "./agent-session.js";
+import type { AgentSession, PromptOptions } from "./agent-session.js";
 import type { ModelRegistry } from "./model-registry.js";
 import { buildSessionContext } from "./session-manager.js";
 import {
@@ -38,7 +38,7 @@ export interface SessionHandle {
   readonly model?: Model<any>;
 
   navigateTree(leafId: string, label?: string): Promise<void>;
-  prompt(text: string): Promise<void>;
+  prompt(text: string, options?: PromptOptions): Promise<void>;
   readonly sessionId: string;
   readonly sessionName?: string;
   setActiveToolsByName(toolNames: string[]): void;
@@ -130,7 +130,7 @@ export class AgentSessionServer {
     // Same active session: let core's steering/followUp handle it.
     if (this._activeSessionId === sessionId) {
       if (cmd.type === "prompt") {
-        await state.session.prompt(cmd.text);
+        await this._promptSession(state, cmd);
       } else {
         await state.session.compact(cmd.reason);
       }
@@ -373,6 +373,19 @@ export class AgentSessionServer {
     await state.session.setModel(model);
   }
 
+  private async _promptSession(
+    state: SessionState,
+    cmd: Extract<SessionCommand, { type: "prompt" }>,
+  ): Promise<void> {
+    if (cmd.streamingBehavior != null) {
+      await state.session.prompt(cmd.text, {
+        streamingBehavior: cmd.streamingBehavior,
+      });
+    } else {
+      await state.session.prompt(cmd.text);
+    }
+  }
+
   private _abortCommand(state: SessionState): void {
     const idx = this._turnQueue.findIndex(
       (e) => e.sessionId === state.session.sessionId,
@@ -393,7 +406,7 @@ export class AgentSessionServer {
     state.busyCount++;
     try {
       if (cmd.type === "prompt") {
-        await state.session.prompt(cmd.text);
+        await this._promptSession(state, cmd);
       } else if (cmd.type === "compact") {
         await state.session.compact(cmd.reason);
       }
@@ -486,7 +499,7 @@ export class AgentSessionServer {
     state.busyCount++;
     try {
       if (entry.command.type === "prompt") {
-        await state.session.prompt(entry.command.text);
+        await this._promptSession(state, entry.command);
       } else if (entry.command.type === "compact") {
         await state.session.compact(entry.command.reason);
       }

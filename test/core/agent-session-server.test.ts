@@ -255,6 +255,119 @@ describe("AgentSessionServer", () => {
       await server.stop();
     });
 
+    test("prompt command forwards streamingBehavior on first run", async () => {
+      const transport = new InMemoryTransport();
+      const store = new InMemorySessionStore();
+      const mockSession = {
+        abort: vi.fn(),
+        compact: vi.fn().mockResolvedValue(undefined),
+        dispose: vi.fn(),
+        getActiveToolNames: vi.fn().mockReturnValue([]),
+        getContextUsage: vi.fn().mockReturnValue(undefined),
+        getSessionStats: vi.fn().mockReturnValue(undefined),
+        navigateTree: vi.fn().mockResolvedValue(undefined),
+        prompt: vi.fn().mockResolvedValue(undefined),
+        sessionId: "test",
+        sessionManager: {
+          getBranch: vi.fn().mockReturnValue([]),
+          getContextPath: vi.fn().mockReturnValue([]),
+          getCwd: vi.fn().mockReturnValue("/tmp"),
+          getEntries: vi.fn().mockReturnValue([]),
+          getLeafId: vi.fn().mockReturnValue(null),
+        },
+        setActiveToolsByName: vi.fn(),
+        setThinkingLevel: vi.fn(),
+        subscribe: vi.fn().mockReturnValue(() => {}),
+      };
+      const factory = createMockSessionFactory(
+        mockSession as unknown as AgentSession,
+      );
+      const server = new AgentSessionServer(
+        store,
+        factory,
+        mockModelRegistry,
+        transport,
+      );
+
+      await server.start();
+      const { sessionId } = await server.createSession("/tmp");
+
+      await server.command(sessionId, {
+        streamingBehavior: "steer",
+        text: "steer-task",
+        type: "prompt",
+      });
+
+      expect(mockSession.prompt).toHaveBeenCalledWith("steer-task", {
+        streamingBehavior: "steer",
+      });
+
+      await server.stop();
+    });
+
+    test("prompt command forwards streamingBehavior during an active run", async () => {
+      const transport = new InMemoryTransport();
+      const store = new InMemorySessionStore();
+      let resolveFirst!: () => void;
+      const firstPromise = new Promise<void>((resolve) => {
+        resolveFirst = resolve;
+      });
+      const mockSession = {
+        abort: vi.fn(),
+        compact: vi.fn().mockResolvedValue(undefined),
+        dispose: vi.fn(),
+        getActiveToolNames: vi.fn().mockReturnValue([]),
+        getContextUsage: vi.fn().mockReturnValue(undefined),
+        getSessionStats: vi.fn().mockReturnValue(undefined),
+        navigateTree: vi.fn().mockResolvedValue(undefined),
+        prompt: vi.fn(() => firstPromise),
+        sessionId: "test",
+        sessionManager: {
+          getBranch: vi.fn().mockReturnValue([]),
+          getContextPath: vi.fn().mockReturnValue([]),
+          getCwd: vi.fn().mockReturnValue("/tmp"),
+          getEntries: vi.fn().mockReturnValue([]),
+          getLeafId: vi.fn().mockReturnValue(null),
+        },
+        setActiveToolsByName: vi.fn(),
+        setThinkingLevel: vi.fn(),
+        subscribe: vi.fn().mockReturnValue(() => {}),
+      };
+      const factory = createMockSessionFactory(
+        mockSession as unknown as AgentSession,
+      );
+      const server = new AgentSessionServer(
+        store,
+        factory,
+        mockModelRegistry,
+        transport,
+      );
+
+      await server.start();
+      const { sessionId } = await server.createSession("/tmp");
+      mockSession.sessionId = sessionId;
+
+      const firstRun = server.command(sessionId, {
+        text: "first",
+        type: "prompt",
+      });
+      const followUpRun = server.command(sessionId, {
+        streamingBehavior: "followUp",
+        text: "follow-up task",
+        type: "prompt",
+      });
+
+      expect(mockSession.prompt).toHaveBeenNthCalledWith(1, "first");
+      expect(mockSession.prompt).toHaveBeenNthCalledWith(2, "follow-up task", {
+        streamingBehavior: "followUp",
+      });
+
+      resolveFirst();
+      await firstRun;
+      await followUpRun;
+      await server.stop();
+    });
+
     test("set_thinking_level command calls session.setThinkingLevel", async () => {
       const transport = new InMemoryTransport();
       const store = new InMemorySessionStore();

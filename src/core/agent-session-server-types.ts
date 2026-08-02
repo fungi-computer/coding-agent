@@ -190,7 +190,12 @@ export type SessionCommand =
       reason?: "manual" | "overflow" | "threshold";
       type: "compact";
     }
-  | { lane?: "interactive" | "cron"; text: string; type: "prompt" }
+  | {
+      lane?: "interactive" | "cron";
+      streamingBehavior?: "followUp" | "steer";
+      text: string;
+      type: "prompt";
+    }
   | { toolNames: string[]; type: "set_tools" }
   | { type: "abort" };
 
