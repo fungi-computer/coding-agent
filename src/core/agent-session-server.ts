@@ -109,6 +109,15 @@ export class AgentSessionServer {
     this._transport = transport;
   }
 
+  /**
+   * The session currently executing a turn, if any. Only one turn runs
+   * at a time (single active run slot), so a tool invoked mid-turn can
+   * attribute itself to this session — e.g. to route a reply back.
+   */
+  getActiveSessionId(): null | string {
+    return this._activeSessionId;
+  }
+
   async command(sessionId: string, cmd: SessionCommand): Promise<void> {
     let state = this._sessions.get(sessionId);
     if (!state) {
