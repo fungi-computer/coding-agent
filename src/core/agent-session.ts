@@ -655,6 +655,32 @@ export class AgentSession {
   }
 
   /**
+   * Resume from the current transcript — re-prompt the LLM with
+   * the last user/tool-result message. This is a runtime nudge
+   * that does NOT append a new user message to the transcript.
+   *
+   * Safe to call on an active run: if the agent is already
+   * processing (streaming / thinking / tool-executing), the call
+   * is a no-op (agent.continue() throws, and we catch).
+   *
+   * Graceful degradation: if the last message is an assistant
+   * message with no queued followUps/steering, continue() throws
+   * and we log a warning.
+   */
+  async resume(): Promise<void> {
+    try {
+      await this.agent.continue();
+    } catch (err) {
+      // Active run → harmless no-op.
+      // Missing preconditions → log and degrade gracefully.
+      console.warn(
+        "[AgentSession] resume skipped: " +
+          (err instanceof Error ? err.message : String(err)),
+      );
+    }
+  }
+
+  /**
    * Cancel in-progress branch summarization.
    */
   abortBranchSummary(): void {

@@ -1,4 +1,4 @@
-import { describe, expect, test } from "vitest";
+import { describe, expect, test, vi } from "vitest";
 
 import type { AgentMessage } from "@shiit/agent-core";
 import type { AssistantMessage, UserMessage } from "@earendil-works/pi-ai";
@@ -84,5 +84,51 @@ describe("AgentSession.getLastAssistantText", () => {
       manager,
     );
     expect(session.getLastAssistantText()).toBe("partial work");
+  });
+});
+
+describe("AgentSession.resume", () => {
+  test("calls agent.continue when idle", async () => {
+    const continueFn = vi.fn().mockResolvedValue(undefined);
+    const session = Object.create(AgentSession.prototype) as AgentSession;
+    Object.defineProperty(session, "agent", {
+      value: { continue: continueFn },
+      writable: true,
+    });
+
+    await (session as any).resume();
+
+    expect(continueFn).toHaveBeenCalledOnce();
+  });
+
+  test("active run is a no-op (agent.continue throws)", async () => {
+    const continueFn = vi
+      .fn()
+      .mockRejectedValue(new Error("Agent is already processing"));
+    const session = Object.create(AgentSession.prototype) as AgentSession;
+    Object.defineProperty(session, "agent", {
+      value: { continue: continueFn },
+      writable: true,
+    });
+
+    // Must not throw — resume swallows errors from agent.continue
+    await expect((session as any).resume()).resolves.toBeUndefined();
+
+    expect(continueFn).toHaveBeenCalledOnce();
+  });
+
+  test("no last message is a no-op (degenerate gracefully)", async () => {
+    const continueFn = vi
+      .fn()
+      .mockRejectedValue(new Error("No messages to continue from"));
+    const session = Object.create(AgentSession.prototype) as AgentSession;
+    Object.defineProperty(session, "agent", {
+      value: { continue: continueFn },
+      writable: true,
+    });
+
+    await expect((session as any).resume()).resolves.toBeUndefined();
+
+    expect(continueFn).toHaveBeenCalledOnce();
   });
 });

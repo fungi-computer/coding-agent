@@ -369,6 +369,8 @@ export class AgentSessionServer {
         case "set_tools":
           state.session.setActiveToolsByName(cmd.toolNames);
           break;
+        case "resume":
+          return state.session.resume().then(() => {});
       }
     } finally {
       state.busyCount--;

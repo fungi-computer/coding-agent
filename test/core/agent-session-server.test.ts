@@ -493,6 +493,70 @@ describe("AgentSessionServer", () => {
     });
   });
 
+  test("resume command calls session.resume", async () => {
+    const transport = new InMemoryTransport();
+    const store = new InMemorySessionStore();
+    const mockSession = {
+      abort: vi.fn(),
+      compact: vi.fn().mockResolvedValue(undefined),
+      dispose: vi.fn(),
+      getActiveToolNames: vi.fn().mockReturnValue([]),
+      getContextUsage: vi.fn().mockReturnValue(undefined),
+      getSessionStats: vi.fn().mockReturnValue(undefined),
+      navigateTree: vi.fn().mockResolvedValue(undefined),
+      prompt: vi.fn().mockResolvedValue(undefined),
+      resume: vi.fn().mockResolvedValue(undefined),
+      sessionId: "test",
+      sessionManager: {
+        getBranch: vi.fn().mockReturnValue([]),
+        getContextPath: vi.fn().mockReturnValue([]),
+        getCwd: vi.fn().mockReturnValue("/tmp"),
+        getEntries: vi.fn().mockReturnValue([]),
+        getLeafId: vi.fn().mockReturnValue(null),
+      },
+      setActiveToolsByName: vi.fn(),
+      setThinkingLevel: vi.fn(),
+      subscribe: vi.fn().mockReturnValue(() => {}),
+    };
+    const factory = createMockSessionFactory(
+      mockSession as unknown as AgentSession,
+    );
+    const server = new AgentSessionServer(
+      store,
+      factory,
+      mockModelRegistry,
+      transport,
+    );
+
+    await server.start();
+    const { sessionId } = await server.createSession("/tmp");
+
+    await server.command(sessionId, { type: "resume" });
+
+    expect(mockSession.resume).toHaveBeenCalledOnce();
+
+    await server.stop();
+  });
+
+  test("resume on nonexistent session throws", async () => {
+    const transport = new InMemoryTransport();
+    const store = new InMemorySessionStore();
+    const factory = createMockSessionFactory();
+    const server = new AgentSessionServer(
+      store,
+      factory,
+      mockModelRegistry,
+      transport,
+    );
+
+    await server.start();
+
+    await expect(
+      server.command("nonexistent", { type: "resume" }),
+    ).rejects.toThrow("Session not found");
+
+    await server.stop();
+  });
   describe("session event wiring", () => {
     test("session events are forwarded to subscribers", async () => {
       const transport = new InMemoryTransport();

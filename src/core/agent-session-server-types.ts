@@ -197,7 +197,8 @@ export type SessionCommand =
       type: "prompt";
     }
   | { toolNames: string[]; type: "set_tools" }
-  | { type: "abort" };
+  | { type: "abort" }
+  | { type: "resume" };
 
 // ============================================================================
 // Global Server Types
